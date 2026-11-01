@@ -1,31 +1,21 @@
 {
-  "artifacts": [
-    {
-      "git": {
-        "commitObject": null,
-        "leaveDotGit": false,
-        "rev": "6a52f3251125d74daf04fcbd5e6f08a75d074382",
-        "submodules": true,
-        "url": "https://github.com/apple/swift-argument-parser.git"
-      },
-      "hash": "sha256-BWm2ZbNIvlamNp8cxoicFlAcujjhH22VPzs67lEIXWU=",
-      "path": "Packages/swift-argument-parser"
-    },
-    {
-      "git": {
-        "commitObject": null,
-        "leaveDotGit": false,
-        "rev": "f96b909e1a9e469620bc5037c1e24e00153f376f",
-        "submodules": true,
-        "url": "https://github.com/apple/swift-collections.git"
-      },
-      "hash": "sha256-ELQN0pXbIr3HmOB6QvNOas2rMYEYdweKOMOm/tEzLRM=",
-      "path": "Packages/swift-collections"
-    }
-  ],
-  "contentHash": "sha256-Xk0IKzzi1EBnA0nrcRs9izznhRZOzVEtkQZTJMoSqYs=",
+  "binaryTargets": [],
+  "contentHash": "sha256-+WhLBHbMgeyGNmFY2of5ETB2ihZFwXXSUuZ2ajbTJkE=",
+  "localDependencies": [],
   "manifestHash": "7dd5b7b4ff3b90f43fcc3ebfc94a8d6af08d760340dc4d2b3dcbc1afbbbe28c5",
   "package": "hello",
+  "pins": {
+    "swift-argument-parser": {
+      "hash": "sha256-BWm2ZbNIvlamNp8cxoicFlAcujjhH22VPzs67lEIXWU=",
+      "name": "swift-argument-parser",
+      "revision": "6a52f3251125d74daf04fcbd5e6f08a75d074382"
+    },
+    "swift-collections": {
+      "hash": "sha256-ELQN0pXbIr3HmOB6QvNOas2rMYEYdweKOMOm/tEzLRM=",
+      "name": "swift-collections",
+      "revision": "f96b909e1a9e469620bc5037c1e24e00153f376f"
+    }
+  },
   "products": [
     {
       "name": "hello",
@@ -37,78 +27,7 @@
       "type": "library"
     }
   ],
-  "resolved": "{\n  \"originHash\" : \"bd59bc7d3925ba2980cefc233f32f388569abd6f1e18bff6f74e97d536a8050d\",\n  \"pins\" : [\n    {\n      \"identity\" : \"swift-argument-parser\",\n      \"kind\" : \"remoteSourceControl\",\n      \"location\" : \"https://github.com/apple/swift-argument-parser.git\",\n      \"state\" : {\n        \"revision\" : \"6a52f3251125d74daf04fcbd5e6f08a75d074382\",\n        \"version\" : \"1.8.2\"\n      }\n    },\n    {\n      \"identity\" : \"swift-collections\",\n      \"kind\" : \"remoteSourceControl\",\n      \"location\" : \"https://github.com/apple/swift-collections.git\",\n      \"state\" : {\n        \"revision\" : \"f96b909e1a9e469620bc5037c1e24e00153f376f\",\n        \"version\" : \"1.7.5\"\n      }\n    }\n  ],\n  \"version\" : 3\n}\n",
-  "resolvedHash": "sha256-irCwmAOyvyY6Jh34eJ2XQli1CklhktIlVisVEiBRcD4=",
   "rootDirectory": "hello",
-  "swiftVersion": "6.3.3",
-  "version": 3,
-  "workspaceState": {
-    "object": {
-      "artifacts": [],
-      "dependencies": [
-        {
-          "basedOn": {
-            "basedOn": null,
-            "packageRef": {
-              "identity": "swift-argument-parser",
-              "kind": "remoteSourceControl",
-              "location": "https://github.com/apple/swift-argument-parser.git",
-              "name": "swift-argument-parser"
-            },
-            "state": {
-              "checkoutState": {
-                "revision": "6a52f3251125d74daf04fcbd5e6f08a75d074382",
-                "version": "1.8.2"
-              },
-              "name": "sourceControlCheckout"
-            },
-            "subpath": "swift-argument-parser"
-          },
-          "packageRef": {
-            "identity": "swift-argument-parser",
-            "kind": "remoteSourceControl",
-            "location": "https://github.com/apple/swift-argument-parser.git",
-            "name": "swift-argument-parser"
-          },
-          "state": {
-            "name": "edited",
-            "path": null
-          },
-          "subpath": "swift-argument-parser"
-        },
-        {
-          "basedOn": {
-            "basedOn": null,
-            "packageRef": {
-              "identity": "swift-collections",
-              "kind": "remoteSourceControl",
-              "location": "https://github.com/apple/swift-collections.git",
-              "name": "swift-collections"
-            },
-            "state": {
-              "checkoutState": {
-                "revision": "f96b909e1a9e469620bc5037c1e24e00153f376f",
-                "version": "1.7.5"
-              },
-              "name": "sourceControlCheckout"
-            },
-            "subpath": "swift-collections"
-          },
-          "packageRef": {
-            "identity": "swift-collections",
-            "kind": "remoteSourceControl",
-            "location": "https://github.com/apple/swift-collections.git",
-            "name": "swift-collections"
-          },
-          "state": {
-            "name": "edited",
-            "path": null
-          },
-          "subpath": "swift-collections"
-        }
-      ],
-      "prebuilts": []
-    },
-    "version": 7
-  }
+  "version": 4,
+  "workspaceStateVersion": 7
 }

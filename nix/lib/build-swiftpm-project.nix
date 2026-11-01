@@ -24,8 +24,8 @@
 # the package root; `fetchers`, given unchanged to the purifier library's
 # fetchEntry (a `fetchurl` there carries credentials or a mirror);
 # `lockFile`, which defaults to the lockfile in `src` and may lie outside
-# it, for a project whose author does not commit one; `"Package.resolved"`,
-# SwiftPM's own lockfile when `src` has none or another; `buildConfig`,
+# it, for a project whose author does not commit one (SwiftPM's own
+# Package.resolved is always read from `src`); `buildConfig`,
 # `release` or `debug`; `artifactBuildInputs`, the libraries the prebuilt
 # files of binary targets need beyond the C and C++ runtime and the
 # libraries patch-artifact.nix offers; and any other argument of
@@ -44,71 +44,31 @@ let
   inherit (pkgs) lib runCommand;
   inherit (pkgs.swiftPackages) stdenv swift swiftpm;
 
-  lock = import ./lock.nix { inherit lockFile; };
+  read = import ./lock.nix { inherit lockFile src; };
+
+  # checkLock of the purifier library stops the evaluation with the
+  # problems lock.nix found: a stale, tampered, malformed or incomplete
+  # lockfile, each with the command that fixes it.
+  current = builtins.seq (purifier.checkLock read.lock) true;
 
   tree = import ./tree.nix {
-    inherit lock runCommand;
+    inherit read runCommand;
+    entries = purifier.entriesFor pkgs.stdenv.hostPlatform.system read.lock;
     fetchEntry = purifier.fetchEntry ({ inherit pkgs; } // fetchers);
     patchArtifact = pkgs.callPackage ./patch-artifact.nix { buildInputs = artifactBuildInputs; };
   };
 
-  # The lock is current when `Package.resolved` and the manifests hash to
-  # what the lock run saw. The hashes are computed the way swiftpm-purifier
-  # computes them.
-  sha256 =
-    file:
-    builtins.convertHash {
-      hash = builtins.hashFile "sha256" file;
-      hashAlgo = "sha256";
-      toHashFormat = "sri";
-    };
-  manifests = lib.sort (a: b: a < b) (
-    builtins.filter (name: builtins.match "Package(@swift-[0-9.]+)?\\.swift" name != null) (
-      builtins.attrNames (builtins.readDir src)
-    )
-  );
-  manifestHash = builtins.hashString "sha256" (
-    builtins.toJSON (
-      map (name: [
-        name
-        (builtins.hashFile "sha256" (src + "/${name}"))
-      ]) manifests
-    )
-  );
-  # SwiftPM's own lockfile is the `"Package.resolved"` argument when one is
-  # given, outside `src`, and replaces any copy in `src`; otherwise it is
-  # the copy in `src`. A source without one, as from a repository that does
-  # not commit it, builds with the copy the lock carries.
-  resolvedFile =
-    args."Package.resolved"
-      or (if builtins.pathExists (src + "/Package.resolved") then src + "/Package.resolved" else null);
-  resolvedHash = if resolvedFile != null then sha256 resolvedFile else lock.resolvedHash;
-  current =
-    (lock.resolvedHash == resolvedHash && lock.manifestHash == manifestHash)
-    || throw "swiftpm-purifier: ${toString lockFile} is out of date with Package.swift or Package.resolved in ${toString src}. Run `swiftpm-purifier lock`.";
-
-  name = lock.package;
+  name = read.package;
 
   # Links the tree into the package root and fills in the workspace state.
-  linkTree =
-    (
-      if resolvedFile != null then
-        ''
-          cp --no-preserve=mode ${resolvedFile} Package.resolved
-        ''
-      else
-        lib.optionalString (lock.resolved != null) ''
-          cp ${builtins.toFile "Package.resolved" lock.resolved} Package.resolved
-        ''
-    )
-    + ''
-      for entry in $(cd ${tree} && find . -mindepth 1 -type l -printf '%P\n'); do
-        mkdir -p "$(dirname "$entry")"
-        ln -sfn "$(readlink ${tree}/$entry)" "$entry"
-      done
-      mkdir -p .build
-      substitute ${tree}/workspace-state.json.in .build/workspace-state.json --subst-var-by root "$PWD"
-    '';
+  linkTree = ''
+    for entry in $(cd ${tree} && find . -mindepth 1 -type l -printf '%P\n'); do
+      mkdir -p "$(dirname "$entry")"
+      ln -sfn "$(readlink ${tree}/$entry)" "$entry"
+    done
+    mkdir -p .build
+    substitute ${tree}/workspace-state.json.in .build/workspace-state.json --subst-var-by root "$PWD"
+  '';
 
   extraArgs = builtins.removeAttrs args [
     "pkgs"
@@ -117,7 +77,6 @@ let
     "lockFile"
     "buildConfig"
     "artifactBuildInputs"
-    "Package.resolved"
   ];
 
   project =
@@ -140,10 +99,10 @@ let
         # workspace state the lock recorded uses the name of the package's
         # directory at the lock run.
         postUnpack = ''
-          if [ "$(basename "$sourceRoot")" != ${lib.escapeShellArg lock.rootDirectory} ]; then
+          if [ "$(basename "$sourceRoot")" != ${lib.escapeShellArg read.rootDirectory} ]; then
             mkdir swiftpm-purifier-root
-            mv "$sourceRoot" swiftpm-purifier-root/${lib.escapeShellArg lock.rootDirectory}
-            sourceRoot=swiftpm-purifier-root/${lib.escapeShellArg lock.rootDirectory}
+            mv "$sourceRoot" swiftpm-purifier-root/${lib.escapeShellArg read.rootDirectory}
+            sourceRoot=swiftpm-purifier-root/${lib.escapeShellArg read.rootDirectory}
           fi
         ''
         + (extraArgs.postUnpack or "");
@@ -175,7 +134,8 @@ let
         + (extraArgs.postInstall or "");
 
         passthru = {
-          inherit lock tree;
+          inherit (read) lock;
+          inherit tree;
         };
       }
       // builtins.removeAttrs extraArgs [
@@ -188,7 +148,7 @@ let
     );
 
   staticLibraries = map (product: product.name) (
-    builtins.filter (product: product.type == "library" && product.linkage == "static") lock.products
+    builtins.filter (product: product.type == "library" && product.linkage == "static") read.products
   );
 
   release =
@@ -216,21 +176,14 @@ let
       release;
 in
 {
-  inherit
-    lock
-    tree
-    project
-    release
-    ;
+  inherit (read) lock;
+  inherit tree project release;
 
-  packages = builtins.listToAttrs (
-    map (product: {
-      inherit (product) name;
-      value = packageOf product;
-    }) lock.products
-  );
+  # The products by name, from the outputs of the checked lock, so a
+  # lockfile with problems stops the evaluation with them.
+  packages = builtins.mapAttrs (_: packageOf) (purifier.checkLock read.lock).outputs;
 
   tests = project.overrideAttrs { doCheck = true; };
 
-  fetches = lock.artifacts;
+  fetches = (purifier.checkLock read.lock).entries;
 }

@@ -23,7 +23,7 @@ import urllib.parse
 from pathlib import Path
 
 LOCK_NAME = "swiftpm-purifier.lock.json"
-LOCK_VERSION = 3
+LOCK_VERSION = 4
 # The lockfile `--lockfile` names, or for the `swift` verb
 # SWIFTPM_PURIFIER_LOCKFILE; without either, the lockfile in the package.
 LOCK_OVERRIDE = os.environ.get("SWIFTPM_PURIFIER_LOCKFILE")
@@ -62,10 +62,6 @@ def sri_sha256(digest: bytes) -> str:
     return "sha256-" + base64.b64encode(digest).decode()
 
 
-def sri_from_hex(hex_digest: str) -> str:
-    return sri_sha256(bytes.fromhex(hex_digest))
-
-
 def file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -83,17 +79,42 @@ def manifest_hash(root: Path) -> str:
     ).hexdigest()
 
 
-def resolved_hash(root: Path):
-    resolved = root / "Package.resolved"
-    if not resolved.exists():
-        return None
-    return sri_sha256(hashlib.sha256(resolved.read_bytes()).digest())
+def resolved_pins(root: Path) -> list:
+    """The pins of the package's Package.resolved, which SwiftPM does not
+    write for a package without remote dependencies."""
+    resolved = read_json(root / "Package.resolved")
+    if resolved is None:
+        return []
+    if resolved.get("version") not in (2, 3):
+        raise PurifierError(
+            f"{root / 'Package.resolved'} has format version {resolved.get('version')}, "
+            "which predates Swift 5.6; run `swiftpm-purifier lock`"
+        )
+    return resolved["pins"]
+
+
+def pinned_at(pin: dict) -> str:
+    """The revision, or for a registry pin the version, a pin names."""
+    return pin["state"].get("revision") or pin["state"]["version"]
 
 
 def is_current(root: Path, lock: dict) -> bool:
-    return lock.get("resolvedHash") == resolved_hash(root) and lock.get(
-        "manifestHash"
-    ) == manifest_hash(root)
+    """Whether the lockfile covers the pins of Package.resolved, as
+    lock.nix checks, and the manifests the lock run saw."""
+    pins = resolved_pins(root)
+    locked = lock.get("pins", {})
+    return (
+        sorted(pin["identity"] for pin in pins) == sorted(locked)
+        and all(
+            (
+                locked[pin["identity"]].get("revision")
+                or locked[pin["identity"]].get("version")
+            )
+            == pinned_at(pin)
+            for pin in pins
+        )
+        and lock.get("manifestHash") == manifest_hash(root)
+    )
 
 
 def find_root(start: Path) -> Path:
@@ -159,12 +180,12 @@ LOCK_KEYS = (
     "version",
     "package",
     "rootDirectory",
-    "resolvedHash",
-    "resolved",
     "manifestHash",
     "products",
-    "workspaceState",
-    "artifacts",
+    "workspaceStateVersion",
+    "pins",
+    "binaryTargets",
+    "localDependencies",
     "contentHash",
 )
 
@@ -266,81 +287,99 @@ def prefetch_file(url: str) -> str:
     return result["hash"]
 
 
-def lock_dependency(dependency, package: Path, config: Path):
-    """The library entry for one dependency of SwiftPM's workspace state,
-    and its record for the workspace-state template, or (None, record) for
-    a dependency that is part of the package source."""
-    ref = dependency["packageRef"]
-    state = dependency["state"]
-    subpath = dependency["subpath"]
-    kind = ref["kind"]
-    path = f"Packages/{subpath}"
-    edited = {
-        "basedOn": dict(dependency, basedOn=None),
+def subpath_of(pin: dict) -> str:
+    """Where SwiftPM keeps a pinned dependency, as lock.nix derives it: a
+    checkout under its identity, a registry download under
+    scope/name/version."""
+    if pin["kind"] == "registry":
+        scope, _, name = pin["identity"].partition(".")
+        return f"{scope}/{name}/{pin['state']['version']}"
+    return pin["identity"]
+
+
+def record_of(pin: dict, name: str) -> dict:
+    """The workspace-state record of a pinned dependency marked as edited,
+    as lock.nix derives it from the pin and the package name the lockfile
+    records."""
+    registry = pin["kind"] == "registry"
+    ref = {
+        "identity": pin["identity"],
+        "kind": pin["kind"],
+        "location": pin["identity"] if registry else pin["location"],
+        "name": name,
+    }
+    subpath = subpath_of(pin)
+    state = (
+        {"name": "registryDownload", "version": pin["state"]["version"]}
+        if registry
+        else {"name": "sourceControlCheckout", "checkoutState": pin["state"]}
+    )
+    return {
+        "basedOn": {
+            "basedOn": None,
+            "packageRef": ref,
+            "state": state,
+            "subpath": subpath,
+        },
         "packageRef": ref,
         "state": {"name": "edited", "path": None},
         "subpath": subpath,
     }
-    if state["name"] == "fileSystem":
-        return None, dependency
-    if state["name"] == "sourceControlCheckout" and kind == "remoteSourceControl":
-        url = mirrors(package, config).get(ref["location"], ref["location"])
-        rev = state["checkoutState"]["revision"]
-        entry = {
-            "path": path,
-            # SwiftPM uses an edited dependency as a plain source tree, so
-            # the checkout needs no .git.
-            "git": {
-                "url": url,
-                "rev": rev,
-                "submodules": True,
-                "leaveDotGit": False,
-                "commitObject": None,
-            },
-            "hash": prefetch_git(url, rev),
-        }
-        return entry, edited
-    if state["name"] == "sourceControlCheckout" and kind == "localSourceControl":
+
+
+def lock_pin(pin: dict, dependency: dict, package: Path, config: Path) -> dict:
+    """The lockfile's record of one pin of Package.resolved: what a build
+    needs beyond the pin. `dependency` is SwiftPM's workspace-state record
+    of the same dependency, which the record lock.nix derives must equal."""
+    ref = dependency["packageRef"]
+    kind = pin["kind"]
+    identity = pin["identity"]
+    if kind == "localSourceControl":
         raise PurifierError(
-            f"{ref['identity']} is a git repository at {ref['location']} on this machine. "
+            f"{identity} is a git repository at {pin['location']} on this machine. "
             "A lockfile cannot name a repository that exists only on one machine, so a Nix "
             "build elsewhere could not fetch it. Depend on it by path (`.package(path:)`) "
             "inside the package, or by its remote URL."
         )
-    if state["name"] == "registryDownload":
-        identity = ref["identity"]
+    if kind not in ("remoteSourceControl", "registry"):
+        raise PurifierError(f"{identity}: a pin of kind {kind!r} is not supported")
+    derived = record_of(pin, ref["name"])
+    recorded = {
+        "basedOn": dict(dependency, basedOn=None),
+        "packageRef": ref,
+        "state": {"name": "edited", "path": None},
+        "subpath": dependency["subpath"],
+    }
+    if derived != recorded:
+        raise PurifierError(
+            f"SwiftPM recorded {identity} in a form swiftpm-purifier does not derive from "
+            f"Package.resolved, so a Nix build could not reproduce it.\n"
+            f"  derived:  {json.dumps(derived['basedOn'], sort_keys=True)}\n"
+            f"  recorded: {json.dumps(recorded['basedOn'], sort_keys=True)}"
+        )
+    locked = {"name": ref["name"]}
+    if kind == "registry":
         scope, _, name = identity.partition(".")
         known = registries(package, config)
         registry = known.get(scope) or known.get("[default]")
         if registry is None:
             raise PurifierError(f"no registry is configured for {identity}")
-        version = state["version"]
-        url = f"{registry}/{urllib.parse.quote(scope)}/{urllib.parse.quote(name)}/{version}.zip"
-        entry = {
-            "path": path,
-            "archive": {"url": url, "mirrors": [], "stripTop": True},
-            "hash": prefetch_file(url),
-        }
-        return entry, edited
-    raise PurifierError(
-        f"{ref['identity']}: SwiftPM state {state['name']!r} of kind {kind!r} is not supported"
-    )
-
-
-def lock_artifact(artifact, package: Path):
-    """The library entry for one binary target of SwiftPM's workspace
-    state, and its record, or (None, record) for a local binary target."""
-    source = artifact["source"]
-    if source["type"] != "remote":
-        return None, artifact
-    artifact_path = Path(artifact["path"])
-    directory = artifact_path.parent.relative_to(package)
-    entry = {
-        "path": str(directory),
-        "archive": {"url": source["url"], "mirrors": [], "stripTop": False},
-        "hash": sri_from_hex(source["checksum"]),
-    }
-    return entry, artifact
+        version = pin["state"]["version"]
+        locked["version"] = version
+        locked["url"] = (
+            f"{registry}/{urllib.parse.quote(scope)}/{urllib.parse.quote(name)}/{version}.zip"
+        )
+        locked["hash"] = prefetch_file(locked["url"])
+        return locked
+    rev = pin["state"]["revision"]
+    url = mirrors(package, config).get(pin["location"], pin["location"])
+    # The fetch URL is recorded only when a mirror replaces the location
+    # that Package.resolved names.
+    if url != pin["location"]:
+        locked["url"] = url
+    locked["revision"] = rev
+    locked["hash"] = prefetch_git(url, rev)
+    return locked
 
 
 def template(value, package: Path):
@@ -374,13 +413,6 @@ def products(package: Path, env, isolation):
     return result, description["name"]
 
 
-def swift_version(env) -> str:
-    match = re.search(
-        r"Swift version (\S+)", output([tool("swift"), "--version"], env=env)
-    )
-    return match.group(1) if match else "unknown"
-
-
 def relock(root: Path):
     with tempfile.TemporaryDirectory(prefix="swiftpm-purifier-") as temporary:
         work = Path(temporary)
@@ -403,17 +435,28 @@ def relock(root: Path):
 
         state = json.loads((package / ".build" / "workspace-state.json").read_text())
         config = work / "config"
-        artifacts, dependencies, binaries = [], [], []
-        for dependency in state["object"]["dependencies"]:
-            entry, record = lock_dependency(dependency, package, config)
-            if entry:
-                artifacts.append(entry)
-            dependencies.append(record)
-        for artifact in state["object"].get("artifacts", []):
-            entry, record = lock_artifact(artifact, package)
-            if entry:
-                artifacts.append(entry)
-            binaries.append(record)
+        recorded = {
+            dependency["packageRef"]["identity"]: dependency
+            for dependency in state["object"]["dependencies"]
+        }
+        pins = {}
+        for pin in resolved_pins(package):
+            dependency = recorded.pop(pin["identity"], None)
+            if dependency is None:
+                raise PurifierError(
+                    f"Package.resolved pins {pin['identity']}, which SwiftPM's workspace state lacks"
+                )
+            pins[pin["identity"]] = lock_pin(pin, dependency, package, config)
+        # What remains are the path dependencies, which Package.resolved
+        # does not list.
+        local = []
+        for identity, dependency in recorded.items():
+            if dependency["state"]["name"] != "fileSystem":
+                raise PurifierError(
+                    f"SwiftPM's workspace state has {identity} in state "
+                    f"{dependency['state']['name']!r}, and Package.resolved does not pin it"
+                )
+            local.append(dependency)
         if state["object"].get("prebuilts"):
             raise PurifierError(
                 "SwiftPM downloaded prebuilt libraries, which swiftpm-purifier does not lock yet"
@@ -424,27 +467,14 @@ def relock(root: Path):
             "version": LOCK_VERSION,
             "package": package_name,
             "rootDirectory": root.name,
-            "swiftVersion": swift_version(env),
-            "resolvedHash": resolved_hash(root),
-            # Many packages do not commit Package.resolved, so the lock
-            # carries it, and a build writes it when the source has none.
-            "resolved": (root / "Package.resolved").read_text()
-            if (root / "Package.resolved").exists()
-            else None,
             "manifestHash": manifest_hash(root),
             "products": package_products,
-            "workspaceState": template(
-                {
-                    "object": {
-                        "artifacts": binaries,
-                        "dependencies": dependencies,
-                        "prebuilts": [],
-                    },
-                    "version": state["version"],
-                },
-                package,
-            ),
-            "artifacts": sorted(artifacts, key=lambda a: a["path"]),
+            "workspaceStateVersion": state["version"],
+            "pins": pins,
+            # Binary targets are declared in the manifests, and their
+            # records carry the URL and checksum the build fetches with.
+            "binaryTargets": template(state["object"].get("artifacts", []), package),
+            "localDependencies": template(local, package),
         }
     lock["contentHash"] = content_hash(lock)
     path = lock_path(root)
@@ -452,7 +482,8 @@ def relock(root: Path):
         json.dumps(lock, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     )
     print(
-        f"swiftpm-purifier: wrote {path} with {len(lock['artifacts'])} entries",
+        f"swiftpm-purifier: wrote {path} with {len(pins)} pins and "
+        f"{len(lock['binaryTargets'])} binary targets",
         file=sys.stderr,
     )
 
@@ -623,8 +654,12 @@ def prefetch(root: Path):
     (root / STATE_DIR).mkdir(parents=True, exist_ok=True)
     gc_root = root / STATE_DIR / "tree"
     nix_build(
-        'purifier.tree { inherit pkgs; lockFile = /. + builtins.getEnv "SWIFTPM_PURIFIER_LOCK"; }',
-        {"SWIFTPM_PURIFIER_LOCK": str(lock_file)},
+        """purifier.tree {
+          inherit pkgs;
+          src = /. + builtins.getEnv "SWIFTPM_PURIFIER_ROOT";
+          lockFile = /. + builtins.getEnv "SWIFTPM_PURIFIER_LOCK";
+        }""",
+        {"SWIFTPM_PURIFIER_ROOT": str(root), "SWIFTPM_PURIFIER_LOCK": str(lock_file)},
         out_link=gc_root,
     )
     nix_build(
@@ -683,7 +718,17 @@ def swift_command(arguments):
             "run `swiftpm-purifier lock`, which resolves and records the new dependencies"
         )
     prefetch(root)
-    os.execvp(swift, [swift, *arguments])
+    # SwiftPM deletes Package.resolved when every dependency is edited,
+    # because no pin is left for it to write. The lockfile reads its pins
+    # from Package.resolved, so the file goes back after SwiftPM exits.
+    resolved = root / "Package.resolved"
+    pins = resolved.read_bytes() if resolved.exists() else None
+    try:
+        status = subprocess.run([swift, *arguments], check=False).returncode
+    finally:
+        if pins is not None and not resolved.exists():
+            resolved.write_bytes(pins)
+    raise SystemExit(status)
 
 
 def main(argv=None):

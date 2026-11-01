@@ -9,14 +9,25 @@ from unittest import mock
 import swiftpm_purifier as sp
 
 
-def checkout(identity, location, kind="remoteSourceControl"):
+def pin(identity, location, kind="remoteSourceControl"):
+    """A pin of Package.resolved."""
+    return {
+        "identity": identity,
+        "kind": kind,
+        "location": location,
+        "state": {"revision": "a" * 40, "version": "1.0.0"},
+    }
+
+
+def checkout(identity, location, kind="remoteSourceControl", name=None):
+    """SwiftPM's workspace-state record of a checked-out dependency."""
     return {
         "basedOn": None,
         "packageRef": {
             "identity": identity,
             "kind": kind,
             "location": location,
-            "name": identity,
+            "name": name or identity,
         },
         "state": {
             "checkoutState": {"revision": "a" * 40, "version": "1.0.0"},
@@ -43,12 +54,40 @@ class ManifestHash(unittest.TestCase):
             ).hexdigest()
             self.assertEqual(sp.manifest_hash(root), expected)
 
-    def test_resolved_hash_is_sri(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            self.assertIsNone(sp.resolved_hash(root))
-            (root / "Package.resolved").write_text("{}")
-            self.assertTrue(sp.resolved_hash(root).startswith("sha256-"))
+
+class IsCurrent(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        (self.root / "Package.swift").write_text("// a\n")
+        self.pins = [pin("x", "https://example/x.git")]
+        (self.root / "Package.resolved").write_text(
+            json.dumps({"pins": self.pins, "version": 3})
+        )
+        self.lock = {
+            "manifestHash": sp.manifest_hash(self.root),
+            "pins": {"x": {"revision": "a" * 40}},
+        }
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_a_lock_covering_every_pin_is_current(self):
+        self.assertTrue(sp.is_current(self.root, self.lock))
+
+    def test_a_moved_pin_is_out_of_date(self):
+        self.lock["pins"]["x"]["revision"] = "b" * 40
+        self.assertFalse(sp.is_current(self.root, self.lock))
+
+    def test_an_extra_pin_is_out_of_date(self):
+        self.lock["pins"]["y"] = {"revision": "a" * 40}
+        self.assertFalse(sp.is_current(self.root, self.lock))
+
+    def test_no_package_resolved_means_no_pins(self):
+        (self.root / "Package.resolved").unlink()
+        self.assertEqual(sp.resolved_pins(self.root), [])
+        self.lock["pins"] = {}
+        self.assertTrue(sp.is_current(self.root, self.lock))
 
 
 class ReadLock(unittest.TestCase):
@@ -78,10 +117,10 @@ class ReadLock(unittest.TestCase):
         self.assert_refused("not valid JSON")
 
     def test_a_missing_field_is_named(self):
-        lock = {key: None for key in sp.LOCK_KEYS if key != "artifacts"}
+        lock = {key: None for key in sp.LOCK_KEYS if key != "pins"}
         lock["version"] = sp.LOCK_VERSION
         self.write(json.dumps(lock))
-        self.assert_refused("lacks artifacts")
+        self.assert_refused("lacks pins")
 
     def test_another_format_version_is_refused(self):
         lock = {key: None for key in sp.LOCK_KEYS}
@@ -95,7 +134,7 @@ class ReadLock(unittest.TestCase):
         lock["contentHash"] = sp.content_hash(lock)
         self.write(json.dumps(lock))
         self.assertEqual(sp.read_lock(self.root)["version"], sp.LOCK_VERSION)
-        lock["artifacts"] = [{"path": "Packages/x"}]
+        lock["pins"] = {"x": {"hash": "sha256-x"}}
         self.write(json.dumps(lock))
         self.assert_refused("contentHash")
 
@@ -120,7 +159,7 @@ class Template(unittest.TestCase):
         )
 
 
-class LockDependency(unittest.TestCase):
+class LockPin(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.package = Path(self.temporary.name) / "package"
@@ -131,33 +170,36 @@ class LockDependency(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def test_remote_checkout_becomes_a_git_entry_and_an_edited_record(self):
-        dependency = checkout(
-            "swift-collections", "https://github.com/apple/swift-collections.git"
-        )
+    def test_a_remote_pin_records_its_hash_and_package_name(self):
+        url = "https://github.com/swiftlang/swift-cmark.git"
         with mock.patch.object(sp, "prefetch_git", return_value="sha256-x") as prefetch:
-            entry, record = sp.lock_dependency(dependency, self.package, self.config)
-        prefetch.assert_called_once_with(
-            "https://github.com/apple/swift-collections.git", "a" * 40
-        )
+            locked = sp.lock_pin(
+                pin("swift-cmark", url),
+                checkout("swift-cmark", url, name="cmark-gfm"),
+                self.package,
+                self.config,
+            )
+        prefetch.assert_called_once_with(url, "a" * 40)
         self.assertEqual(
-            entry,
-            {
-                "path": "Packages/swift-collections",
-                "git": {
-                    "url": "https://github.com/apple/swift-collections.git",
-                    "rev": "a" * 40,
-                    "submodules": True,
-                    "leaveDotGit": False,
-                    "commitObject": None,
-                },
-                "hash": "sha256-x",
-            },
+            locked, {"name": "cmark-gfm", "revision": "a" * 40, "hash": "sha256-x"}
         )
-        self.assertEqual(record["state"], {"name": "edited", "path": None})
-        self.assertEqual(record["basedOn"]["state"], dependency["state"])
 
-    def test_a_mirror_is_fetched_in_place_of_the_original(self):
+    def test_the_derived_record_is_swiftpms_record_marked_as_edited(self):
+        url = "https://example/x.git"
+        record = sp.record_of(pin("x", url), "x")
+        self.assertEqual(record["basedOn"], checkout("x", url))
+        self.assertEqual(record["state"], {"name": "edited", "path": None})
+
+    def test_a_record_that_differs_from_the_derived_one_is_refused(self):
+        dependency = checkout("x", "https://example/x.git")
+        dependency["subpath"] = "elsewhere"
+        with self.assertRaises(sp.PurifierError) as caught:
+            sp.lock_pin(
+                pin("x", "https://example/x.git"), dependency, self.package, self.config
+            )
+        self.assertIn("does not derive", str(caught.exception))
+
+    def test_a_mirror_is_recorded_as_the_fetch_url(self):
         mirrors = {
             "object": [
                 {
@@ -168,41 +210,37 @@ class LockDependency(unittest.TestCase):
             "version": 1,
         }
         (self.config / "mirrors.json").write_text(json.dumps(mirrors))
-        with mock.patch.object(sp, "prefetch_git", return_value="sha256-x"):
-            entry, record = sp.lock_dependency(
-                checkout("x", "https://a.example/x.git"), self.package, self.config
+        with mock.patch.object(sp, "prefetch_git", return_value="sha256-x") as prefetch:
+            locked = sp.lock_pin(
+                pin("x", "https://a.example/x.git"),
+                checkout("x", "https://a.example/x.git"),
+                self.package,
+                self.config,
             )
-        self.assertEqual(entry["git"]["url"], "https://b.example/x.git")
-        self.assertEqual(record["packageRef"]["location"], "https://a.example/x.git")
-
-    def test_a_path_dependency_is_part_of_the_source(self):
-        dependency = {
-            "basedOn": None,
-            "packageRef": {
-                "identity": "local",
-                "kind": "fileSystem",
-                "location": "/p/local",
-                "name": "local",
-            },
-            "state": {"name": "fileSystem", "path": "/p/local"},
-            "subpath": "local",
-        }
-        self.assertEqual(
-            sp.lock_dependency(dependency, self.package, self.config),
-            (None, dependency),
-        )
+        prefetch.assert_called_once_with("https://b.example/x.git", "a" * 40)
+        self.assertEqual(locked["url"], "https://b.example/x.git")
 
     def test_a_local_repository_is_refused(self):
-        dependency = checkout("local", "/home/someone/local", kind="localSourceControl")
         with self.assertRaises(sp.PurifierError):
-            sp.lock_dependency(dependency, self.package, self.config)
+            sp.lock_pin(
+                pin("local", "/home/someone/local", kind="localSourceControl"),
+                checkout("local", "/home/someone/local", kind="localSourceControl"),
+                self.package,
+                self.config,
+            )
 
-    def test_a_registry_download_becomes_an_archive_entry(self):
+    def test_a_registry_pin_records_its_archive_url(self):
         registries = {
             "registries": {"[default]": {"url": "https://registry.example/"}},
             "version": 1,
         }
         (self.config / "registries.json").write_text(json.dumps(registries))
+        registry_pin = {
+            "identity": "nix.greeter",
+            "kind": "registry",
+            "location": "",
+            "state": {"version": "1.2.0"},
+        }
         dependency = {
             "basedOn": None,
             "packageRef": {
@@ -217,47 +255,19 @@ class LockDependency(unittest.TestCase):
         with mock.patch.object(
             sp, "prefetch_file", return_value="sha256-y"
         ) as prefetch:
-            entry, record = sp.lock_dependency(dependency, self.package, self.config)
+            locked = sp.lock_pin(registry_pin, dependency, self.package, self.config)
         prefetch.assert_called_once_with(
             "https://registry.example/nix/greeter/1.2.0.zip"
         )
         self.assertEqual(
-            entry,
+            locked,
             {
-                "path": "Packages/nix/greeter/1.2.0",
-                "archive": {
-                    "url": "https://registry.example/nix/greeter/1.2.0.zip",
-                    "mirrors": [],
-                    "stripTop": True,
-                },
+                "name": "nix.greeter",
+                "version": "1.2.0",
+                "url": "https://registry.example/nix/greeter/1.2.0.zip",
                 "hash": "sha256-y",
             },
         )
-        self.assertEqual(record["state"]["name"], "edited")
-
-
-class LockArtifact(unittest.TestCase):
-    def test_a_remote_binary_target_becomes_an_archive_entry(self):
-        package = Path("/w/package")
-        artifact = {
-            "kind": "artifactsArchive",
-            "packageRef": {"identity": "p"},
-            "path": "/w/package/.build/artifacts/p/Tool/Tool.artifactbundle",
-            "source": {
-                "type": "remote",
-                "url": "https://example/tool.zip",
-                "checksum": "00" * 32,
-            },
-            "targetName": "Tool",
-        }
-        entry, record = sp.lock_artifact(artifact, package)
-        self.assertEqual(entry["path"], ".build/artifacts/p/Tool")
-        self.assertEqual(
-            entry["archive"],
-            {"url": "https://example/tool.zip", "mirrors": [], "stripTop": False},
-        )
-        self.assertEqual(entry["hash"], sp.sri_from_hex("00" * 32))
-        self.assertIs(record, artifact)
 
 
 if __name__ == "__main__":

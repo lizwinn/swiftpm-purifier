@@ -1,68 +1,23 @@
 {
-  "artifacts": [
-    {
-      "git": {
-        "commitObject": null,
-        "leaveDotGit": false,
-        "rev": "4799286537280063c85a32f09884cfbca301b1a1",
-        "submodules": true,
-        "url": "https://github.com/swiftlang/swift-syntax.git"
-      },
-      "hash": "sha256-wK3GRpAamNDz4ueL+ror9phZrlvT1Y4WKno0TWF2ExM=",
-      "path": "Packages/swift-syntax"
-    }
-  ],
-  "contentHash": "sha256-TYcYileLmr1W2swApVfhcLS6axNPgnbpl+XgYNlKAy0=",
+  "binaryTargets": [],
+  "contentHash": "sha256-FVqMMD4NrDanMmbfMHwSHjumwRrCHwm+mXmGSh7IKdA=",
+  "localDependencies": [],
   "manifestHash": "b98f3b52b88b446a234f6448561fc3bee8ac98f5c6aaa4beaf869a8cc1943f7d",
   "package": "macro",
+  "pins": {
+    "swift-syntax": {
+      "hash": "sha256-wK3GRpAamNDz4ueL+ror9phZrlvT1Y4WKno0TWF2ExM=",
+      "name": "swift-syntax",
+      "revision": "4799286537280063c85a32f09884cfbca301b1a1"
+    }
+  },
   "products": [
     {
       "name": "macro",
       "type": "executable"
     }
   ],
-  "resolved": "{\n  \"originHash\" : \"d12b8f425202832f86b3b842032b582fda2aecd59703f2fd73038dec12820248\",\n  \"pins\" : [\n    {\n      \"identity\" : \"swift-syntax\",\n      \"kind\" : \"remoteSourceControl\",\n      \"location\" : \"https://github.com/swiftlang/swift-syntax.git\",\n      \"state\" : {\n        \"revision\" : \"4799286537280063c85a32f09884cfbca301b1a1\",\n        \"version\" : \"602.0.0\"\n      }\n    }\n  ],\n  \"version\" : 3\n}\n",
-  "resolvedHash": "sha256-zITfc+nRXb43X78mjGzofkacz0mBKOBqO7jAcgOmSCs=",
   "rootDirectory": "macro",
-  "swiftVersion": "6.3.3",
-  "version": 3,
-  "workspaceState": {
-    "object": {
-      "artifacts": [],
-      "dependencies": [
-        {
-          "basedOn": {
-            "basedOn": null,
-            "packageRef": {
-              "identity": "swift-syntax",
-              "kind": "remoteSourceControl",
-              "location": "https://github.com/swiftlang/swift-syntax.git",
-              "name": "swift-syntax"
-            },
-            "state": {
-              "checkoutState": {
-                "revision": "4799286537280063c85a32f09884cfbca301b1a1",
-                "version": "602.0.0"
-              },
-              "name": "sourceControlCheckout"
-            },
-            "subpath": "swift-syntax"
-          },
-          "packageRef": {
-            "identity": "swift-syntax",
-            "kind": "remoteSourceControl",
-            "location": "https://github.com/swiftlang/swift-syntax.git",
-            "name": "swift-syntax"
-          },
-          "state": {
-            "name": "edited",
-            "path": null
-          },
-          "subpath": "swift-syntax"
-        }
-      ],
-      "prebuilts": []
-    },
-    "version": 7
-  }
+  "version": 4,
+  "workspaceStateVersion": 7
 }

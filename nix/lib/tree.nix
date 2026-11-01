@@ -3,7 +3,7 @@
 # The locked dependencies of a package, laid out the way SwiftPM expects
 # them under the package root: each entry at its `path` (`Packages/<name>`
 # for a package dependency, `.build/artifacts/...` for a binary target),
-# and `workspace-state.json.in`, the workspace state the lock run recorded,
+# and `workspace-state.json.in`, the workspace state lock.nix derives,
 # with every package dependency marked as edited. The template names the
 # package root `@root@`; whoever links the tree into a package fills it in.
 #
@@ -11,7 +11,8 @@
 # into a store path. `patchArtifact` (patch-artifact.nix) makes the
 # prebuilt files of each binary target run under Nix.
 {
-  lock,
+  read,
+  entries,
   fetchEntry,
   runCommand,
   patchArtifact,
@@ -22,7 +23,7 @@ let
   place =
     artifact:
     if isBinaryTarget artifact then
-      patchArtifact (lock.artifactName artifact) (fetchEntry artifact)
+      patchArtifact (read.entryName artifact) (fetchEntry artifact)
     else
       fetchEntry artifact;
 
@@ -30,12 +31,12 @@ let
     map (artifact: ''
       mkdir -p "$(dirname "$out/${artifact.path}")"
       ln -s ${place artifact} "$out/${artifact.path}"
-    '') lock.artifacts
+    '') entries
   );
 in
 runCommand "swiftpm-purifier-tree"
   {
-    workspaceState = builtins.toJSON lock.workspaceState;
+    workspaceState = builtins.toJSON read.workspaceState;
     passAsFile = [ "workspaceState" ];
   }
   ''
