@@ -9,7 +9,8 @@
 #    dependencies; with a stale lockfile it removes its links and leaves
 #    SwiftPM to resolve the usual way; `swiftpm-purifier uninstall` removes
 #    them too.
-# 3. A dependency from a package registry, against a stand-in registry
+# 3. A lockfile with a tampered hash fails the build with a hash mismatch.
+# 4. A dependency from a package registry, against a stand-in registry
 #    (tests/registry.py): `swiftpm-purifier publish` uploads a package's
 #    source archive, a second package depends on it by registry identity,
 #    its lock records the archive, Nix builds it, and the interactive mode
@@ -72,6 +73,31 @@ echo "== uninstall removes the links"
 "$bin/swiftpm-purifier" uninstall
 [ ! -e Packages/swift-collections ] || fail "uninstall left the links"
 [ ! -e .build/workspace-state.json ] || fail "uninstall left the workspace state"
+
+echo "== a tampered hash in the lockfile fails the fetch"
+cp -r "$tests/fixtures/hello" "$work/tampered"
+chmod -R u+w "$work/tampered"
+python3 - "$work/tampered/swiftpm-purifier.lock.json" << 'EOF'
+import json, sys
+path = sys.argv[1]
+lock = json.load(open(path))
+# Another valid SHA-256 hash: the fetch succeeds, and its content does not match.
+lock["artifacts"][0]["hash"] = "sha256-" + "A" * 43 + "="
+open(path, "w").write(json.dumps(lock, indent=2, sort_keys=True) + "\n")
+EOF
+if nix build --impure --no-link --expr "
+  let
+    flake = builtins.getFlake \"$repo\";
+    pkgs = import flake.inputs.nixpkgs {
+      system = builtins.currentSystem;
+      overlays = [ flake.overlays.default ];
+    };
+  in
+  (pkgs.buildSwiftPMProject { src = $work/tampered; }).project
+" 2> "$work/tampered.err"; then
+  fail "a build with a tampered hash succeeded"
+fi
+grep -q 'hash mismatch' "$work/tampered.err" || fail "a tampered hash failed without a hash mismatch: $(tail -5 "$work/tampered.err")"
 
 echo "== a dependency from a package registry"
 mkdir -p "$work/archives"
