@@ -18,10 +18,11 @@
       "type": "executable"
     }
   ],
+  "resolved": null,
   "resolvedHash": null,
   "rootDirectory": "binary",
   "swiftVersion": "6.3.3",
-  "version": 1,
+  "version": 2,
   "workspaceState": {
     "object": {
       "artifacts": [

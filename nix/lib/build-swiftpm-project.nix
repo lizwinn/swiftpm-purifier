@@ -82,11 +82,10 @@ let
       ]) manifests
     )
   );
-  resolvedHash =
-    if builtins.pathExists (src + "/Package.resolved") then
-      sha256 (src + "/Package.resolved")
-    else
-      null;
+  # A source without Package.resolved, as from a repository that does not
+  # commit it, builds with the copy the lock carries.
+  hasResolved = builtins.pathExists (src + "/Package.resolved");
+  resolvedHash = if hasResolved then sha256 (src + "/Package.resolved") else lock.resolvedHash;
   current =
     (lock.resolvedHash == resolvedHash && lock.manifestHash == manifestHash)
     || throw "swiftpm-purifier: ${toString lockFile} is out of date with Package.swift or Package.resolved in ${toString src}. Run `swiftpm-purifier lock`.";
@@ -94,15 +93,19 @@ let
   name = lock.package;
 
   # Links the tree into the package root and fills in the workspace state.
-  linkTree = ''
-    for entry in $(cd ${tree} && find . -mindepth 1 \( -type l -o -name workspace-state.json.in \) -printf '%P\n'); do
-      if [ "$entry" = workspace-state.json.in ]; then continue; fi
-      mkdir -p "$(dirname "$entry")"
-      ln -sfn "$(readlink ${tree}/$entry)" "$entry"
-    done
-    mkdir -p .build
-    substitute ${tree}/workspace-state.json.in .build/workspace-state.json --subst-var-by root "$PWD"
-  '';
+  linkTree =
+    lib.optionalString (!hasResolved && lock.resolved != null) ''
+      cp ${builtins.toFile "Package.resolved" lock.resolved} Package.resolved
+    ''
+    + ''
+      for entry in $(cd ${tree} && find . -mindepth 1 \( -type l -o -name workspace-state.json.in \) -printf '%P\n'); do
+        if [ "$entry" = workspace-state.json.in ]; then continue; fi
+        mkdir -p "$(dirname "$entry")"
+        ln -sfn "$(readlink ${tree}/$entry)" "$entry"
+      done
+      mkdir -p .build
+      substitute ${tree}/workspace-state.json.in .build/workspace-state.json --subst-var-by root "$PWD"
+    '';
 
   extraArgs = builtins.removeAttrs args [
     "src"

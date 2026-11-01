@@ -27,6 +27,21 @@ let
   # prebuild command runs before each build.
   binary = buildSwiftPMProject { src = ./fixtures/binary; };
 
+  # swift-format, a real-world project, at its swift-6.3.3-RELEASE tag. Its
+  # repository does not commit Package.resolved, so the build writes the
+  # copy its lockfile carries. The source is fetched at evaluation, so its
+  # manifests can be read without import-from-derivation.
+  swiftFormat = buildSwiftPMProject {
+    src = builtins.fetchTree {
+      type = "github";
+      owner = "swiftlang";
+      repo = "swift-format";
+      rev = "9f3ddd22382a36a5e50c4af9294f03ebfe5017fd";
+      narHash = "sha256-YkOsFWaQJU786L9OB/n9jOL5G303cz0q62dw3yFWkA0=";
+    };
+    lockFile = ./projects/swift-format/swiftpm-purifier.lock.json;
+  };
+
   # Runs a command and compares what it prints.
   prints =
     name: command: expected:
@@ -48,6 +63,7 @@ let
         rootDirectory = "p";
         swiftVersion = "6.3.3";
         resolvedHash = null;
+        resolved = null;
         manifestHash = "";
         products = [ ];
         workspaceState.object = {
@@ -95,6 +111,11 @@ in
         if pkgs'.stdenv.hostPlatform.isAarch64 then "arm64" else "amd64"
       }/swiftlint version"
       "0.65.1";
+
+  project-swift-format =
+    prints "project-swift-format"
+      "printf 'let x=1\\n' | ${lib.getExe swiftFormat.packages.swift-format}"
+      "let x = 1";
 
   # The source archive of the package, which is the package of its
   # automatic library product, holds the manifest and no build state.

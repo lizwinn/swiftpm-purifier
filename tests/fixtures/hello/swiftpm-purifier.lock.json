@@ -36,10 +36,11 @@
       "type": "library"
     }
   ],
+  "resolved": "{\n  \"originHash\" : \"bd59bc7d3925ba2980cefc233f32f388569abd6f1e18bff6f74e97d536a8050d\",\n  \"pins\" : [\n    {\n      \"identity\" : \"swift-argument-parser\",\n      \"kind\" : \"remoteSourceControl\",\n      \"location\" : \"https://github.com/apple/swift-argument-parser.git\",\n      \"state\" : {\n        \"revision\" : \"6a52f3251125d74daf04fcbd5e6f08a75d074382\",\n        \"version\" : \"1.8.2\"\n      }\n    },\n    {\n      \"identity\" : \"swift-collections\",\n      \"kind\" : \"remoteSourceControl\",\n      \"location\" : \"https://github.com/apple/swift-collections.git\",\n      \"state\" : {\n        \"revision\" : \"f96b909e1a9e469620bc5037c1e24e00153f376f\",\n        \"version\" : \"1.7.5\"\n      }\n    }\n  ],\n  \"version\" : 3\n}\n",
   "resolvedHash": "sha256-irCwmAOyvyY6Jh34eJ2XQli1CklhktIlVisVEiBRcD4=",
   "rootDirectory": "hello",
   "swiftVersion": "6.3.3",
-  "version": 1,
+  "version": 2,
   "workspaceState": {
     "object": {
       "artifacts": [],

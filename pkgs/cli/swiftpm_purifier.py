@@ -23,7 +23,7 @@ import urllib.parse
 from pathlib import Path
 
 LOCK_NAME = "swiftpm-purifier.lock.json"
-LOCK_VERSION = 1
+LOCK_VERSION = 2
 ROOT_PLACEHOLDER = "@root@"
 MANIFEST_PATTERN = re.compile(r"Package(@swift-[0-9.]+)?\.swift")
 # What the interactive mode keeps under .build: the Nix GC root of the
@@ -141,6 +141,7 @@ LOCK_KEYS = (
     "package",
     "rootDirectory",
     "resolvedHash",
+    "resolved",
     "manifestHash",
     "products",
     "workspaceState",
@@ -399,6 +400,11 @@ def relock(root: Path):
             "rootDirectory": root.name,
             "swiftVersion": swift_version(env),
             "resolvedHash": resolved_hash(root),
+            # Many packages do not commit Package.resolved, so the lock
+            # carries it, and a build writes it when the source has none.
+            "resolved": (root / "Package.resolved").read_text()
+            if (root / "Package.resolved").exists()
+            else None,
             "manifestHash": manifest_hash(root),
             "products": package_products,
             "workspaceState": template(

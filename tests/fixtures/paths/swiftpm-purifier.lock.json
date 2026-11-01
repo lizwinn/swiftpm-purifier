@@ -31,10 +31,11 @@
       "type": "executable"
     }
   ],
+  "resolved": "{\n  \"originHash\" : \"6bc4887ad4e135c081ebe015d16a754c6e87818f135c120e1ea93d014ef8bd38\",\n  \"pins\" : [\n    {\n      \"identity\" : \"swift-algorithms\",\n      \"kind\" : \"remoteSourceControl\",\n      \"location\" : \"https://github.com/apple/swift-algorithms.git\",\n      \"state\" : {\n        \"revision\" : \"87e50f483c54e6efd60e885f7f5aa946cee68023\",\n        \"version\" : \"1.2.1\"\n      }\n    },\n    {\n      \"identity\" : \"swift-numerics\",\n      \"kind\" : \"remoteSourceControl\",\n      \"location\" : \"https://github.com/apple/swift-numerics.git\",\n      \"state\" : {\n        \"revision\" : \"0c0290ff6b24942dadb83a929ffaaa1481df04a2\",\n        \"version\" : \"1.1.1\"\n      }\n    }\n  ],\n  \"version\" : 3\n}\n",
   "resolvedHash": "sha256-VrEAZqMY0KYZxfBVzLd7e+4gDW+4aMW/HRd+GNaCPpw=",
   "rootDirectory": "paths",
   "swiftVersion": "6.3.3",
-  "version": 1,
+  "version": 2,
   "workspaceState": {
     "object": {
       "artifacts": [],

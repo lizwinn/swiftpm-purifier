@@ -20,10 +20,11 @@
       "type": "executable"
     }
   ],
+  "resolved": "{\n  \"originHash\" : \"d12b8f425202832f86b3b842032b582fda2aecd59703f2fd73038dec12820248\",\n  \"pins\" : [\n    {\n      \"identity\" : \"swift-syntax\",\n      \"kind\" : \"remoteSourceControl\",\n      \"location\" : \"https://github.com/swiftlang/swift-syntax.git\",\n      \"state\" : {\n        \"revision\" : \"4799286537280063c85a32f09884cfbca301b1a1\",\n        \"version\" : \"602.0.0\"\n      }\n    }\n  ],\n  \"version\" : 3\n}\n",
   "resolvedHash": "sha256-zITfc+nRXb43X78mjGzofkacz0mBKOBqO7jAcgOmSCs=",
   "rootDirectory": "macro",
   "swiftVersion": "6.3.3",
-  "version": 1,
+  "version": 2,
   "workspaceState": {
     "object": {
       "artifacts": [],

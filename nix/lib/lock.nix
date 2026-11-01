@@ -19,6 +19,7 @@ let
     "package"
     "rootDirectory"
     "resolvedHash"
+    "resolved"
     "manifestHash"
     "products"
     "workspaceState"
