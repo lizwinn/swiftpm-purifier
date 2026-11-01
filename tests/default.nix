@@ -14,7 +14,7 @@
 let
   pkgs' = pkgs.extend overlay;
   inherit (pkgs') lib runCommand;
-  build = args: library.buildSwiftPMProject ({ pkgs = pkgs'; } // args);
+  build = pkgs'.buildSwiftPMProject;
 
   # An executable and a library, with two dependencies from git and a
   # test target.
@@ -142,6 +142,19 @@ in
         if unzip -l ${hello.release} | grep -qE ' hello/(\.build|Packages)/'; then exit 1; fi
         touch $out
       '';
+
+  # A package written for callPackage takes the builder by name, and the
+  # builder takes its own packages by name too, so `override` replaces them.
+  consumer-package =
+    let
+      consumer =
+        { buildSwiftPMProject }: (buildSwiftPMProject { src = ./fixtures/hello; }).packages.hello;
+      overridden = pkgs'.buildSwiftPMProject.override { fetchurl = args: pkgs'.fetchurl args; };
+    in
+    assert (pkgs'.callPackage consumer { }).drvPath == hello.packages.hello.drvPath;
+    assert
+      (overridden { src = ./fixtures/hello; }).packages.hello.drvPath == hello.packages.hello.drvPath;
+    runCommand "consumer-package" { } "touch $out";
 
   # `fetches` lists the entries the build fetches.
   fixture-hello-fetches =

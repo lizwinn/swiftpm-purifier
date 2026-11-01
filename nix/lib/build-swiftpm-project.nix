@@ -1,12 +1,18 @@
 # SPDX-License-Identifier: MIT
 #
 # Builds a SwiftPM package and its lockfile (written by `swiftpm-purifier
-# lock`) in the Nix sandbox. The flake publishes it as
-# `lib.swiftpm-purifier.buildSwiftPMProject`:
+# lock`) in the Nix sandbox.
 #
-#   buildSwiftPMProject { inherit pkgs; src = ./.; }
+# The file is a package for callPackage: the first argument set is what it
+# takes from the package set by name, and the result is the builder. The
+# overlay of this flake (`overlays.default`) adds it to the package set as
+# `buildSwiftPMProject`, so a package written for callPackage takes it like
+# any other builder:
 #
-# returns
+#   { buildSwiftPMProject }: (buildSwiftPMProject { src = ./.; }).packages.hello
+#
+# and `buildSwiftPMProject.override` replaces any package it takes. The
+# builder returns
 #
 # - `packages.<product>`, one per product the lock recorded from
 #   `swift package dump-package`: an executable's binary under bin/, a
@@ -20,9 +26,9 @@
 # - `project`, the build with every product installed;
 # - `tree`, the locked dependencies laid out for SwiftPM.
 #
-# Arguments: `pkgs`, the package set whose Swift toolchain builds; `src`,
-# the package root; `fetchers`, given unchanged to the purifier library's
-# fetchEntry (a `fetchurl` there carries credentials or a mirror);
+# Arguments: `src`, the package root; `fetchers`, given unchanged to
+# `fetchEntry` of the purifier library (a `fetchurl` there carries
+# credentials or a mirror);
 # `lockFile`, which defaults to the lockfile in `src` and may lie outside
 # it, for a project whose author does not commit one (SwiftPM's own
 # Package.resolved is always read from `src`); `buildConfig`,
@@ -30,9 +36,23 @@
 # files of binary targets need beyond the C and C++ runtime and the
 # libraries patch-artifact.nix offers; and any other argument of
 # stdenv.mkDerivation, given to the build.
-{ purifier }:
 {
-  pkgs,
+  lib,
+  runCommand,
+  zip,
+  unzip,
+  zstd,
+  fetchurl,
+  fetchgit,
+  callPackage,
+  # The Swift toolchain: its stdenv builds, and its swift and swiftpm are
+  # the tools of the build.
+  swiftPackages,
+  # The purifier library, whose fetchEntry, checkLock and entriesFor the
+  # builder uses.
+  purifier,
+}:
+{
   src,
   fetchers ? { },
   lockFile ? src + "/swiftpm-purifier.lock.json",
@@ -41,8 +61,7 @@
   ...
 }@args:
 let
-  inherit (pkgs) lib runCommand;
-  inherit (pkgs.swiftPackages) stdenv swift swiftpm;
+  inherit (swiftPackages) stdenv swift swiftpm;
 
   read = import ./lock.nix { inherit lockFile src; };
 
@@ -53,9 +72,25 @@ let
 
   tree = import ./tree.nix {
     inherit read runCommand;
-    entries = purifier.entriesFor pkgs.stdenv.hostPlatform.system read.lock;
-    fetchEntry = purifier.fetchEntry ({ inherit pkgs; } // fetchers);
-    patchArtifact = pkgs.callPackage ./patch-artifact.nix { buildInputs = artifactBuildInputs; };
+    entries = purifier.entriesFor stdenv.hostPlatform.system read.lock;
+    # fetchEntry takes the packages it uses from this set: the fetchers of
+    # the two kinds of entry that swiftpm-purifier writes, and the tools
+    # that unpack an archive.
+    fetchEntry = purifier.fetchEntry (
+      {
+        pkgs = {
+          inherit
+            runCommand
+            unzip
+            zstd
+            fetchurl
+            fetchgit
+            ;
+        };
+      }
+      // fetchers
+    );
+    patchArtifact = callPackage ./patch-artifact.nix { buildInputs = artifactBuildInputs; };
   };
 
   name = read.package;
@@ -71,7 +106,6 @@ let
   '';
 
   extraArgs = builtins.removeAttrs args [
-    "pkgs"
     "src"
     "fetchers"
     "lockFile"
@@ -153,7 +187,7 @@ let
 
   release =
     assert current;
-    import ./source-archive.nix { inherit (pkgs) runCommand zip; } { inherit src name; };
+    import ./source-archive.nix { inherit runCommand zip; } { inherit src name; };
 
   packageOf =
     product:

@@ -4,8 +4,8 @@ A command and a Nix library that make Nix the dependency backend of a
 [SwiftPM](https://www.swift.org/documentation/package-manager/) package.
 SwiftPM still resolves and plans the build, and `Package.resolved` stays
 its lockfile. `swiftpm-purifier lock` writes `swiftpm-purifier.lock.json`,
-which records only what `Package.resolved` lacks, such as the content hash
-of each pin. Nix then builds the package in its sandbox from the two files,
+which records what `Package.resolved` lacks, such as the content hash of
+each pin. Nix then builds the package in its sandbox from the two files,
 with no generated Nix files to commit, and `swift` runs offline on the same
 locked dependencies during development.
 
@@ -22,7 +22,14 @@ and the lockfile:
 nix run github:nix-purifiers/swiftpm-purifier -- lock
 ```
 
-Build it with the library function in your flake:
+The flake adds the builder `buildSwiftPMProject` to the package set, so a
+package written for `callPackage` takes it by name:
+
+```nix
+# package.nix
+{ buildSwiftPMProject }:
+(buildSwiftPMProject { src = ./.; }).packages.hello
+```
 
 ```nix
 {
@@ -32,20 +39,34 @@ Build it with the library function in your flake:
   outputs = { nixpkgs, swiftpm-purifier, ... }:
     let
       system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
-      project = swiftpm-purifier.lib.swiftpm-purifier.buildSwiftPMProject {
-        inherit pkgs;
-        src = ./.;
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [
+          swiftpm-purifier.overlays.default
+          (final: prev: { hello = final.callPackage ./package.nix { }; })
+        ];
       };
     in
     {
-      packages.${system}.default = project.packages.hello;
-      checks.${system}.tests = project.tests;
+      packages.${system}.default = pkgs.hello;
     };
 }
 ```
 
-`buildSwiftPMProject` returns:
+`buildSwiftPMProject` takes these arguments:
+
+- `src`, the root of the package.
+- `lockFile`, which defaults to `swiftpm-purifier.lock.json` in `src` and
+  may lie outside it.
+- `fetchers`, which goes unchanged to `fetchEntry` of the purifier library,
+  so a company mirror or credentials go into `fetchers.fetchurl`.
+- `buildConfig`, `release` (the default) or `debug`.
+- `artifactBuildInputs`, libraries that the prebuilt files of binary
+  targets need beyond the C and C++ runtime, curl, libxml2, zlib, OpenSSL,
+  SQLite and ICU.
+- Any argument of `stdenv.mkDerivation`.
+
+It returns:
 
 - `packages.<product>`, one per product of the package. An executable is
   its binary under `bin/`. A dynamic or static library is its library file
@@ -59,13 +80,9 @@ Build it with the library function in your flake:
 - `project`, the build with every product installed, and `tree`, the locked
   dependencies laid out for SwiftPM.
 
-Its arguments are `pkgs`; `src`; `lockFile`, which defaults to the
-lockfile in `src` and may lie outside it; `fetchers`, which goes unchanged
-to `fetchEntry` of the purifier library, so a company mirror or credentials
-go into `fetchers.fetchurl`; `buildConfig`, `release` (the default) or
-`debug`; `artifactBuildInputs`, libraries that the prebuilt files of binary
-targets need beyond the C and C++ runtime, curl, libxml2, zlib, OpenSSL,
-SQLite and ICU; and any argument of `stdenv.mkDerivation`.
+The builder takes `swiftPackages`, `runCommand`, `zip`, `unzip`, `zstd`,
+`fetchurl`, `fetchgit` and the purifier library from the package set by
+name, and `buildSwiftPMProject.override` replaces any of them.
 
 `lib.swiftpm-purifier.readLock { src, lockFile ? ... }` gives the lock in
 memory of the purifier contract: `{ purifier, entries, outputs, problems }`.
@@ -74,9 +91,9 @@ memory of the purifier contract: `{ purifier, entries, outputs, problems }`.
 A project whose author does not commit a purifier lockfile can be built by
 a flake that keeps the lockfile and passes it as `lockFile`. The file
 `Package.resolved` stays in `src`, because it is the lockfile of SwiftPM.
-A project without a `Package.resolved` cannot be built externally yet.
+A project without a `Package.resolved` cannot be built this way yet.
 
-## Everyday loop
+## Development loop
 
 `nix develop github:nix-purifiers/swiftpm-purifier` gives a shell whose
 `swift` runs through `swiftpm-purifier swift`. In a package with an
@@ -86,9 +103,9 @@ locked dependencies, which the shell links into `Packages/` and
 `swiftpm-purifier swift build`.
 
 `swiftpm-purifier lock` records the downloads and keeps the pins of
-`Package.resolved` as they are. It relocks only when `Package.swift` or the
-pins changed since the lockfile was made, and `relock` relocks regardless.
-A relock of an unchanged package reproduces the lockfile byte for byte.
+`Package.resolved` as they are. It relocks when `Package.swift` or the pins
+changed since the lockfile was made, and `relock` relocks regardless. A
+relock of an unchanged package reproduces the lockfile byte for byte.
 
 `swiftpm-purifier update [<package>...]` updates the pins through the
 `swift package update` command of SwiftPM, for every package or the named
@@ -104,7 +121,7 @@ When the lockfile is not in the package, every command takes
 a flake that calls the builder can set the variable to the path it passes
 as `lockFile`.
 
-## Offline work
+## Working offline
 
 `swiftpm-purifier prefetch` realizes in the Nix store the locked
 dependencies and the toolchain, which includes sourcekit-lsp. It links the
@@ -124,7 +141,7 @@ in nixpkgs cannot find the SourceKit plugin of its toolchain and cannot
 create a build server, so it resolves no symbols, with or without
 swiftpm-purifier.
 
-## Errors and fixes
+## Troubleshooting
 
 A lockfile that is stale, changed by hand, malformed or incomplete fails
 in the command and at Nix evaluation, with a message that names the command
@@ -141,7 +158,7 @@ that fixes it.
 `swiftpm-purifier swift` stops with a stale lockfile, where SwiftPM would
 resolve and download what the lock does not hold.
 
-## Sources supported and refused
+## Supported language repositories
 
 | What SwiftPM fetched | What the lockfile records | Status |
 |---|---|---|
@@ -198,9 +215,11 @@ Build it with a flake next to that lockfile:
   outputs = { nixpkgs, swiftpm-purifier, toolbox, ... }:
     let
       system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
-      project = swiftpm-purifier.lib.swiftpm-purifier.buildSwiftPMProject {
-        inherit pkgs;
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [ swiftpm-purifier.overlays.default ];
+      };
+      project = pkgs.buildSwiftPMProject {
         src = toolbox;
         lockFile = ./swiftpm-purifier.lock.json;
       };

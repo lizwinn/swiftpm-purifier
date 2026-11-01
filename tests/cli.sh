@@ -60,8 +60,7 @@ project() {
         overlays = [ flake.overlays.default ];
       };
     in
-    flake.lib.swiftpm-purifier.buildSwiftPMProject {
-      inherit pkgs;
+    pkgs.buildSwiftPMProject {
       src = $1;
       ${2:+lockFile = $2;}
     }"
