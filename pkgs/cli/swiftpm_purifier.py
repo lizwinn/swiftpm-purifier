@@ -216,7 +216,15 @@ def lock_dependency(dependency, package: Path, config: Path):
         rev = state["checkoutState"]["revision"]
         entry = {
             "path": path,
-            "git": {"url": url, "rev": rev, "submodules": True, "leaveDotGit": False},
+            # SwiftPM uses an edited dependency as a plain source tree, so
+            # the checkout needs no .git.
+            "git": {
+                "url": url,
+                "rev": rev,
+                "submodules": True,
+                "leaveDotGit": False,
+                "commitObject": None,
+            },
             "hash": prefetch_git(url, rev),
         }
         return entry, edited

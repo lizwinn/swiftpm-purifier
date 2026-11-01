@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MIT
+#
+# Checks every pull request and every push to main.
+#
+# `flake-check` builds the flake's checks: the fixtures offline from their
+# lockfiles, the swiftpm-purifier command with its unit tests, and the
+# formatting. `cli` runs tests/cli.sh, which needs the network and runs
+# Nix, and so cannot run in the Nix sandbox: it relocks the fixtures and
+# compares the lockfiles, exercises the interactive mode, and locks, builds
+# and publishes a package against a stand-in registry.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  flake-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Build the checks
+        run: nix flake check --print-build-logs
+
+  cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Run tests/cli.sh
+        run: nix shell 'nixpkgs#python3' -c tests/cli.sh

@@ -94,6 +94,7 @@ class LockDependency(unittest.TestCase):
                     "rev": "a" * 40,
                     "submodules": True,
                     "leaveDotGit": False,
+                    "commitObject": None,
                 },
                 "hash": "sha256-x",
             },

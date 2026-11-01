@@ -2,6 +2,7 @@
   "artifacts": [
     {
       "git": {
+        "commitObject": null,
         "leaveDotGit": false,
         "rev": "6a52f3251125d74daf04fcbd5e6f08a75d074382",
         "submodules": true,
@@ -12,6 +13,7 @@
     },
     {
       "git": {
+        "commitObject": null,
         "leaveDotGit": false,
         "rev": "f96b909e1a9e469620bc5037c1e24e00153f376f",
         "submodules": true,

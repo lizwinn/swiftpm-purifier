@@ -19,10 +19,11 @@
       lib = caisson.lib.caisson.mkLib {
         inherit (caisson.lib.caisson.pins.flake inputs) sources root;
         name = "swiftpm-purifier";
-        systems = [
-          "x86_64-linux"
-          "aarch64-linux"
-        ];
+        # nixpkgs marks its Swift 6.3 compiler broken on aarch64-linux,
+        # where it fails to link with the gold linker; nixpkgs expects the
+        # Swift 6.4 update, which links with LLD, to fix it. aarch64-linux
+        # joins the list when nixpkgs' Swift builds there.
+        systems = [ "x86_64-linux" ];
         projects = {
           inherit caisson;
         };

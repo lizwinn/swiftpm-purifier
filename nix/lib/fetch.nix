@@ -8,9 +8,12 @@
 #   is an archive file (`hash` covers the file as downloaded), unpacked
 #   into a directory, without its single top-level directory when
 #   `stripTop` is true;
-# - a git entry `{ path, git = { url, rev, submodules, leaveDotGit }, hash }`
+# - a git entry
+#   `{ path, git = { url, rev, submodules, leaveDotGit, commitObject }, hash }`
 #   is a checkout, fetched with nixpkgs' fetchgit, so `hash` is the hash
-#   nix-prefetch-git reports.
+#   nix-prefetch-git reports. SwiftPM builds an edited dependency from a
+#   plain source tree, so this purifier writes `leaveDotGit = false` and
+#   `commitObject = null`, and the fetch never keeps .git.
 #
 # `fetchurl` and `fetchgit` come from the package set, and a caller may
 # replace them, for credentials or mirrors: fetchurl is called with
@@ -38,7 +41,12 @@ in
 if artifact ? git then
   fetchgit {
     inherit name;
-    inherit (artifact.git) url rev leaveDotGit;
+    inherit (artifact.git) url rev;
+    leaveDotGit =
+      if artifact.git.leaveDotGit then
+        throw "swiftpm-purifier: ${artifact.path} asks for .git, which this purifier never records"
+      else
+        false;
     inherit (artifact) hash;
     fetchSubmodules = artifact.git.submodules;
   }
