@@ -60,7 +60,7 @@ project() {
         overlays = [ flake.overlays.default ];
       };
     in
-    pkgs.buildSwiftPMProject {
+    pkgs.swiftpm-purifier.buildSwiftPMProject {
       src = $1;
       ${2:+lockFile = $2;}
     }"
@@ -133,6 +133,12 @@ interactive() {
     || fail "the lockfile kept outside differs from the fixture's lockfile"
   [ "$(SWIFTPM_PURIFIER_LOCKFILE="$work/external/hello.lock.json" "$bin/swift" run hello Nix)" = "Hello, Nix!" ] \
     || fail "swift run with SWIFTPM_PURIFIER_LOCKFILE printed something else"
+
+  echo "== a lockfile of SwiftPM kept outside the package"
+  cp Package.resolved "$work/Package.resolved.in-tree"
+  "$bin/swiftpm-purifier" --lockfile "$work/external/hello.lock.json" --tool-lockfile "$work/external/hello.resolved" relock
+  cmp Package.resolved "$work/Package.resolved.in-tree" || fail "relock with --tool-lockfile changed the copy in the package"
+  cmp "$work/external/hello.resolved" Package.resolved || fail "relock with --tool-lockfile did not start from the copy in the package"
   cd "$work"
 }
 

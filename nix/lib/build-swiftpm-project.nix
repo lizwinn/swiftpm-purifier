@@ -30,8 +30,10 @@
 # `fetchEntry` of the purifier library (a `fetchurl` there carries
 # credentials or a mirror);
 # `lockFile`, which defaults to the lockfile in `src` and may lie outside
-# it, for a project whose author does not commit one (SwiftPM's own
-# Package.resolved is always read from `src`); `buildConfig`,
+# it, for a project whose author does not commit one; `packageResolved`,
+# SwiftPM's own lockfile, which defaults to the copy in `src` and may be a
+# copy kept outside the repository, which the build then uses in place of
+# the one in `src`; `buildConfig`,
 # `release` or `debug`; `artifactBuildInputs`, the libraries the prebuilt
 # files of binary targets need beyond the C and C++ runtime and the
 # libraries patch-artifact.nix offers; and any other argument of
@@ -42,6 +44,8 @@
   zip,
   unzip,
   zstd,
+  python3,
+  writeText,
   fetchurl,
   fetchgit,
   callPackage,
@@ -56,6 +60,8 @@
   src,
   fetchers ? { },
   lockFile ? src + "/swiftpm-purifier.lock.json",
+  # SwiftPM's lockfile, which a flake can keep outside `src`.
+  packageResolved ? src + "/Package.resolved",
   buildConfig ? "release",
   artifactBuildInputs ? [ ],
   ...
@@ -63,7 +69,7 @@
 let
   inherit (swiftPackages) stdenv swift swiftpm;
 
-  read = import ./lock.nix { inherit lockFile src; };
+  read = import ./lock.nix { inherit lockFile src packageResolved; };
 
   # checkLock of the purifier library stops the evaluation with the
   # problems lock.nix found: a stale, tampered, malformed or incomplete
@@ -73,20 +79,19 @@ let
   tree = import ./tree.nix {
     inherit read runCommand;
     entries = purifier.entriesFor stdenv.hostPlatform.system read.lock;
-    # fetchEntry takes the packages it uses from this set: the fetchers of
-    # the two kinds of entry that swiftpm-purifier writes, and the tools
-    # that unpack an archive.
+    # fetchEntry takes by name the fetchers of the two kinds of entry that
+    # swiftpm-purifier writes, and the tools that unpack an archive.
     fetchEntry = purifier.fetchEntry (
       {
-        pkgs = {
-          inherit
-            runCommand
-            unzip
-            zstd
-            fetchurl
-            fetchgit
-            ;
-        };
+        inherit
+          runCommand
+          unzip
+          zstd
+          python3
+          writeText
+          fetchurl
+          fetchgit
+          ;
       }
       // fetchers
     );
@@ -97,6 +102,9 @@ let
 
   # Links the tree into the package root and fills in the workspace state.
   linkTree = ''
+    ${lib.optionalString (builtins.pathExists packageResolved) ''
+      cp --no-preserve=mode ${packageResolved} Package.resolved
+    ''}
     for entry in $(cd ${tree} && find . -mindepth 1 -type l -printf '%P\n'); do
       mkdir -p "$(dirname "$entry")"
       ln -sfn "$(readlink ${tree}/$entry)" "$entry"
@@ -109,6 +117,7 @@ let
     "src"
     "fetchers"
     "lockFile"
+    "packageResolved"
     "buildConfig"
     "artifactBuildInputs"
   ];

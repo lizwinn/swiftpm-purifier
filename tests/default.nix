@@ -14,7 +14,7 @@
 let
   pkgs' = pkgs.extend overlay;
   inherit (pkgs') lib runCommand;
-  build = pkgs'.buildSwiftPMProject;
+  build = pkgs'.swiftpm-purifier.buildSwiftPMProject;
 
   # An executable and a library, with two dependencies from git and a
   # test target.
@@ -89,13 +89,18 @@ let
       lockFile = lockFileOf (rehash (helloLock // { inherit version; }));
     }).lock.problems == [ ];
 
-  # The hello fixture without its purifier lockfile, which
-  # conformance-external gives from outside it. Package.resolved, the
-  # lockfile of SwiftPM itself, stays in the source.
+  # The hello fixture without its purifier lockfile, and without
+  # Package.resolved, the lockfile of SwiftPM itself. conformance-external
+  # gives both from outside the source.
   helloSourceOnly = builtins.path {
     path = ./fixtures/hello;
     name = "hello";
-    filter = path: type: baseNameOf path != "swiftpm-purifier.lock.json";
+    filter =
+      path: type:
+      !(builtins.elem (baseNameOf path) [
+        "swiftpm-purifier.lock.json"
+        "Package.resolved"
+      ]);
   };
 
   helloRead = library.readLock { src = ./fixtures/hello; };
@@ -148,8 +153,11 @@ in
   consumer-package =
     let
       consumer =
-        { buildSwiftPMProject }: (buildSwiftPMProject { src = ./fixtures/hello; }).packages.hello;
-      overridden = pkgs'.buildSwiftPMProject.override { fetchurl = args: pkgs'.fetchurl args; };
+        { swiftpm-purifier }:
+        (swiftpm-purifier.buildSwiftPMProject { src = ./fixtures/hello; }).packages.hello;
+      overridden = pkgs'.swiftpm-purifier.buildSwiftPMProject.override {
+        fetchurl = args: pkgs'.fetchurl args;
+      };
     in
     assert (pkgs'.callPackage consumer { }).drvPath == hello.packages.hello.drvPath;
     assert
@@ -217,16 +225,22 @@ in
     assert refuses (helloWith (rehash (builtins.removeAttrs helloLock [ "binaryTargets" ])));
     runCommand "conformance-malformed" { } "touch $out";
 
-  # A source that holds Package.resolved, the lockfile of SwiftPM itself,
-  # and no purifier lockfile builds from a purifier lockfile kept outside
-  # it.
+  # A source that holds neither the purifier lockfile nor Package.resolved,
+  # the lockfile of SwiftPM itself, builds from both kept outside it.
   conformance-external =
     let
       external = build {
         src = helloSourceOnly;
         lockFile = ./fixtures/hello/swiftpm-purifier.lock.json;
+        packageResolved = ./fixtures/hello/Package.resolved;
+      };
+      # A copy of Package.resolved outside the source replaces the one in it.
+      replaced = build {
+        src = ./fixtures/hello;
+        packageResolved = ./fixtures/hello/Package.resolved;
       };
     in
+    assert replaced.packages.hello.drvPath == hello.packages.hello.drvPath;
     prints "conformance-external" "${lib.getExe external.packages.hello} Nix" "Hello, Nix!";
 
   # readLock gives the lock in memory of the purifier contract, whose

@@ -16,12 +16,12 @@
       inherit (libOverlays) default;
     };
 
-    # The packages are the `default` entry of this flake's package overlay
-    # registry (pkg-overlays/): the package set applies it by default, and
-    # the flake exports it as `pkgOverlays` and as the plain
-    # `overlays.default`.
+    # The package set applies the `default` entry of this flake's package
+    # overlay registry (pkg-overlays/) by default, and the flake exports it
+    # as `pkgOverlays` and as the plain `overlays.default`. The flake's
+    # `packages` are set below, to the derivations of the scope.
     nixpkgs = {
-      packages.export.enabled = true;
+      packages.export.enabled = false;
     };
   };
 
@@ -31,11 +31,15 @@
   # `nix develop github:nix-purifiers/swiftpm-purifier` gives a shell whose
   # `swift` runs against the package's locked dependencies.
   perSystem =
-    { config, pkgs, ... }:
+    { pkgs, ... }:
     {
-      packages.default = config.packages.cli;
+      # The derivations of the scope `pkgs.swiftpm-purifier`: the `cli` and
+      # the `toolchain`. The builder is a function, so it stays out.
+      packages = lib.filterAttrs (_: lib.isDerivation) pkgs.swiftpm-purifier // {
+        default = pkgs.swiftpm-purifier.cli;
+      };
       devShells.default = pkgs.mkShell {
-        packages = [ config.packages.toolchain ];
+        packages = [ pkgs.swiftpm-purifier.toolchain ];
       };
     };
 

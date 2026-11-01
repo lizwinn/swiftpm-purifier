@@ -15,20 +15,23 @@ that every nix-purifier shares.
 
 ## Quickstart
 
-Lock the package in the current directory, and commit `Package.resolved`
-and the lockfile:
+Lock the package in the current directory, and commit both lockfiles,
+`Package.resolved` and `swiftpm-purifier.lock.json`, to the repository of
+the project:
 
 ```zsh
 nix run github:nix-purifiers/swiftpm-purifier -- lock
 ```
 
-The flake adds the builder `buildSwiftPMProject` to the package set, so a
-package written for `callPackage` takes it by name:
+The flake adds one attribute to the package set: the scope
+`pkgs.swiftpm-purifier`, which holds the builder `buildSwiftPMProject`, the
+`swiftpm-purifier` command as `cli`, and the Swift `toolchain`. A package
+written for `callPackage` takes the scope by name:
 
 ```nix
 # package.nix
-{ buildSwiftPMProject }:
-(buildSwiftPMProject { src = ./.; }).packages.hello
+{ swiftpm-purifier }:
+(swiftpm-purifier.buildSwiftPMProject { src = ./.; }).packages.hello
 ```
 
 ```nix
@@ -58,6 +61,8 @@ package written for `callPackage` takes it by name:
 - `src`, the root of the package.
 - `lockFile`, which defaults to `swiftpm-purifier.lock.json` in `src` and
   may lie outside it.
+- `packageResolved`, which defaults to `Package.resolved` in `src`. A copy
+  kept outside the repository replaces the one in `src` in the build.
 - `fetchers`, which goes unchanged to `fetchEntry` of the purifier library,
   so a company mirror or credentials go into `fetchers.fetchurl`.
 - `buildConfig`, `release` (the default) or `debug`.
@@ -80,22 +85,31 @@ It returns:
 - `project`, the build with every product installed, and `tree`, the locked
   dependencies laid out for SwiftPM.
 
-The builder takes `swiftPackages`, `runCommand`, `zip`, `unzip`, `zstd`,
-`fetchurl`, `fetchgit` and the purifier library from the package set by
-name, and `buildSwiftPMProject.override` replaces any of them.
+The builder is a package for `callPackage` in that scope. It takes
+`swiftPackages`, `runCommand`, `zip`, `unzip`, `zstd`, `python3`,
+`writeText`, `fetchurl`, `fetchgit` and the purifier library by name.
+`swiftpm-purifier.buildSwiftPMProject.override` replaces any of them, and
+`swiftpm-purifier.overrideScope` replaces what everything in the scope
+shares.
 
-`lib.swiftpm-purifier.readLock { src, lockFile ? ... }` gives the lock in
-memory of the purifier contract: `{ purifier, entries, outputs, problems }`.
-`problems` is empty for a usable lock.
+`lib.swiftpm-purifier.readLock { src, lockFile ? ..., packageResolved ? ... }`
+gives the lock in memory of the purifier contract:
+`{ purifier, entries, outputs, problems }`. `problems` is empty for a usable
+lock.
 
-A project whose author does not commit a purifier lockfile can be built by
-a flake that keeps the lockfile and passes it as `lockFile`. The file
-`Package.resolved` stays in `src`, because it is the lockfile of SwiftPM.
-SwiftPM has no way to name its own lockfile outside the package, so a
-project that does not commit `Package.resolved` cannot be built from
-outside its tree. For such a project, `swiftpm-purifier lock` writes the
-`Package.resolved` that SwiftPM resolves into the tree, and a fork or a
-patched source that commits it builds.
+We recommend committing both lockfiles to the repository of the project.
+The builder and the commands look for them there by default.
+
+A flake can instead keep a build external: the flake that calls the builder
+keeps the lockfiles outside the repository and passes them as `lockFile` and
+`packageResolved`. This builds a project whose author commits neither
+lockfile, or whose committed `Package.resolved` is stale or comes from
+another version of SwiftPM. The commands take `--lockfile <path>` and
+`--tool-lockfile <path>` for the two files, or the variables
+`SWIFTPM_PURIFIER_LOCKFILE` and `SWIFTPM_PURIFIER_TOOL_LOCKFILE`. With
+`--tool-lockfile`, `lock` and `update` write the `Package.resolved` there and
+leave the copy in the tree as it is, and `lock` starts from the copy in the
+tree when the outside one does not exist yet.
 
 ## Development loop
 
@@ -121,10 +135,11 @@ Nix and uploads it (SE-0391) to the registry configured for the scope, or
 to `--registry <url>`. `SWIFTPM_PURIFIER_REGISTRY_TOKEN` is sent as a
 bearer token.
 
-When the lockfile is not in the package, every command takes
-`--lockfile <path>`, or reads `SWIFTPM_PURIFIER_LOCKFILE`. The dev shell of
-a flake that calls the builder can set the variable to the path it passes
-as `lockFile`.
+For an external build, every command takes `--lockfile <path>` and
+`--tool-lockfile <path>`, or reads `SWIFTPM_PURIFIER_LOCKFILE` and
+`SWIFTPM_PURIFIER_TOOL_LOCKFILE`. Either one takes precedence over the
+default location. The dev shell of a flake that calls the builder can set
+both variables to the paths it passes as `lockFile` and `packageResolved`.
 
 ## Working offline
 
@@ -225,7 +240,7 @@ Build it with a flake next to that lockfile:
         inherit system;
         overlays = [ swiftpm-purifier.overlays.default ];
       };
-      project = pkgs.buildSwiftPMProject {
+      project = pkgs.swiftpm-purifier.buildSwiftPMProject {
         src = toolbox;
         lockFile = ./swiftpm-purifier.lock.json;
       };

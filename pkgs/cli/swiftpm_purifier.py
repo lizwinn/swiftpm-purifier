@@ -33,6 +33,41 @@ def lock_path(root: Path) -> Path:
     return Path(LOCK_OVERRIDE).resolve() if LOCK_OVERRIDE else root / LOCK_NAME
 
 
+# The copy of Package.resolved that `--tool-lockfile` or
+# SWIFTPM_PURIFIER_TOOL_LOCKFILE names. `lock` and `update` write it there
+# and leave the copy in the package as it is; without either, the copy in
+# the package.
+TOOL_LOCK_OVERRIDE = os.environ.get("SWIFTPM_PURIFIER_TOOL_LOCKFILE")
+
+
+def resolved_path(root: Path) -> Path:
+    if TOOL_LOCK_OVERRIDE:
+        return Path(TOOL_LOCK_OVERRIDE).resolve()
+    return root / "Package.resolved"
+
+
+def nix_lock_arguments(root: Path) -> str:
+    """The arguments of buildSwiftPMProject that name the lockfiles, for an
+    expression that reads SWIFTPM_PURIFIER_LOCK and SWIFTPM_PURIFIER_RESOLVED
+    with builtins.getEnv."""
+    arguments = 'lockFile = /. + builtins.getEnv "SWIFTPM_PURIFIER_LOCK";'
+    if TOOL_LOCK_OVERRIDE:
+        arguments += (
+            ' packageResolved = /. + builtins.getEnv "SWIFTPM_PURIFIER_RESOLVED";'
+        )
+    return arguments
+
+
+def nix_lock_environment(root: Path) -> dict:
+    environment = {
+        "SWIFTPM_PURIFIER_ROOT": str(root),
+        "SWIFTPM_PURIFIER_LOCK": str(lock_path(root)),
+    }
+    if TOOL_LOCK_OVERRIDE:
+        environment["SWIFTPM_PURIFIER_RESOLVED"] = str(resolved_path(root))
+    return environment
+
+
 def content_hash(lock: dict) -> str:
     """The hash of a lockfile without its contentHash, of the JSON that
     builtins.toJSON writes for it: keys in order and no spaces."""
@@ -79,15 +114,15 @@ def manifest_hash(root: Path) -> str:
     ).hexdigest()
 
 
-def resolved_pins(root: Path) -> list:
-    """The pins of the package's Package.resolved, which SwiftPM does not
-    write for a package without remote dependencies."""
-    resolved = read_json(root / "Package.resolved")
+def resolved_pins(resolved_file: Path) -> list:
+    """The pins of a Package.resolved, which SwiftPM does not write for a
+    package without remote dependencies."""
+    resolved = read_json(resolved_file)
     if resolved is None:
         return []
     if resolved.get("version") not in (2, 3):
         raise PurifierError(
-            f"{root / 'Package.resolved'} has format version {resolved.get('version')}, "
+            f"{resolved_file} has format version {resolved.get('version')}, "
             "which predates Swift 5.6; run `swiftpm-purifier lock`"
         )
     return resolved["pins"]
@@ -101,7 +136,7 @@ def pinned_at(pin: dict) -> str:
 def is_current(root: Path, lock: dict) -> bool:
     """Whether the lockfile covers the pins of Package.resolved, as
     lock.nix checks, and the manifests the lock run saw."""
-    pins = resolved_pins(root)
+    pins = resolved_pins(resolved_path(root))
     locked = lock.get("pins", {})
     return (
         sorted(pin["identity"] for pin in pins) == sorted(locked)
@@ -425,6 +460,11 @@ def relock(root: Path, update=None):
         package = work / "packages" / root.name
         package.parent.mkdir()
         copy_package(root, package)
+        # With a lockfile of SwiftPM kept outside the package, the lock run
+        # starts from that copy when it exists, and from the copy in the
+        # package otherwise.
+        if TOOL_LOCK_OVERRIDE and resolved_path(root).exists():
+            shutil.copyfile(resolved_path(root), package / "Package.resolved")
         env = dict(os.environ, CLANG_MODULE_CACHE_PATH=str(work / "clang-module-cache"))
         isolation = swiftpm_isolation(work)
         print("swiftpm-purifier: resolving with an empty cache", file=sys.stderr)
@@ -439,10 +479,11 @@ def relock(root: Path, update=None):
 
         resolved = package / "Package.resolved"
         if resolved.exists():
-            existing = root / "Package.resolved"
+            existing = resolved_path(root)
             if not existing.exists() or existing.read_bytes() != resolved.read_bytes():
+                existing.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(resolved, existing)
-                print("swiftpm-purifier: wrote Package.resolved", file=sys.stderr)
+                print(f"swiftpm-purifier: wrote {existing}", file=sys.stderr)
 
         state = json.loads((package / ".build" / "workspace-state.json").read_text())
         config = work / "config"
@@ -451,7 +492,7 @@ def relock(root: Path, update=None):
             for dependency in state["object"]["dependencies"]
         }
         pins = {}
-        for pin in resolved_pins(package):
+        for pin in resolved_pins(package / "Package.resolved"):
             dependency = recorded.pop(pin["identity"], None)
             if dependency is None:
                 raise PurifierError(
@@ -554,14 +595,11 @@ def publish(root: Path, identity: str, version: str, registry):
                 f"no registry is configured for {identity}; pass --registry"
             )
     archive = nix_build(
-        """(pkgs.buildSwiftPMProject {
+        f"""(pkgs.swiftpm-purifier.buildSwiftPMProject {{
           src = /. + builtins.getEnv "SWIFTPM_PURIFIER_ROOT";
-          lockFile = /. + builtins.getEnv "SWIFTPM_PURIFIER_LOCK";
-        }).release""",
-        {
-            "SWIFTPM_PURIFIER_ROOT": str(root),
-            "SWIFTPM_PURIFIER_LOCK": str(lock_path(root)),
-        },
+          {nix_lock_arguments(root)}
+        }}).release""",
+        nix_lock_environment(root),
     )
     content_type, body = multipart(
         [
@@ -674,11 +712,11 @@ def prefetch(root: Path):
     (root / STATE_DIR).mkdir(parents=True, exist_ok=True)
     gc_root = root / STATE_DIR / "tree"
     nix_build(
-        """(pkgs.buildSwiftPMProject {
+        f"""(pkgs.swiftpm-purifier.buildSwiftPMProject {{
           src = /. + builtins.getEnv "SWIFTPM_PURIFIER_ROOT";
-          lockFile = /. + builtins.getEnv "SWIFTPM_PURIFIER_LOCK";
-        }).tree""",
-        {"SWIFTPM_PURIFIER_ROOT": str(root), "SWIFTPM_PURIFIER_LOCK": str(lock_file)},
+          {nix_lock_arguments(root)}
+        }}).tree""",
+        nix_lock_environment(root),
         out_link=gc_root,
     )
     nix_build(
@@ -773,6 +811,12 @@ def main(argv=None):
         type=Path,
         help=f"the purifier lockfile (default: {LOCK_NAME} in the package root)",
     )
+    parser.add_argument(
+        "--tool-lockfile",
+        type=Path,
+        help="the Package.resolved to read and write instead of the one in the "
+        "package root, which `lock` and `update` then leave as it is",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser(
         "lock", help="lock the package, unless its lockfile is up to date"
@@ -806,9 +850,11 @@ def main(argv=None):
     swift = commands.add_parser("swift", help="run swift on the locked dependencies")
     swift.add_argument("arguments", nargs=argparse.REMAINDER)
     options = parser.parse_args(argv)
-    global LOCK_OVERRIDE
+    global LOCK_OVERRIDE, TOOL_LOCK_OVERRIDE
     if options.lockfile:
         LOCK_OVERRIDE = str(options.lockfile.resolve())
+    if options.tool_lockfile:
+        TOOL_LOCK_OVERRIDE = str(options.tool_lockfile.resolve())
 
     try:
         if options.command == "swift":

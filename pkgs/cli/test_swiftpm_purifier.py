@@ -83,9 +83,18 @@ class IsCurrent(unittest.TestCase):
         self.lock["pins"]["y"] = {"revision": "a" * 40}
         self.assertFalse(sp.is_current(self.root, self.lock))
 
+    def test_a_lockfile_of_swiftpm_kept_outside_is_the_one_checked(self):
+        outside = self.root / "outside.resolved"
+        outside.write_text(json.dumps({"pins": [], "version": 3}))
+        self.lock["pins"] = {}
+        with mock.patch.object(sp, "TOOL_LOCK_OVERRIDE", str(outside)):
+            self.assertEqual(sp.resolved_path(self.root), outside.resolve())
+            self.assertTrue(sp.is_current(self.root, self.lock))
+        self.assertFalse(sp.is_current(self.root, self.lock))
+
     def test_no_package_resolved_means_no_pins(self):
         (self.root / "Package.resolved").unlink()
-        self.assertEqual(sp.resolved_pins(self.root), [])
+        self.assertEqual(sp.resolved_pins(self.root / "Package.resolved"), [])
         self.lock["pins"] = {}
         self.assertTrue(sp.is_current(self.root, self.lock))
 

@@ -21,7 +21,13 @@
 # is empty.
 #
 # Needs no nixpkgs. `lockFile` is a path, or an absolute path as a string.
-{ lockFile, src }:
+{
+  lockFile,
+  src,
+  # SwiftPM's lockfile. A flake that keeps its own copy outside `src` passes
+  # it here, and the build uses it in place of the one in `src`.
+  packageResolved ? src + "/Package.resolved",
+}:
 let
   relock = "Run `swiftpm-purifier relock` to write it again.";
 
@@ -75,7 +81,7 @@ let
 
   # SwiftPM writes no Package.resolved for a package without remote
   # dependencies, and such a package has no pins.
-  resolvedFile = src + "/Package.resolved";
+  resolvedFile = packageResolved;
   resolved =
     if builtins.pathExists resolvedFile then
       builtins.fromJSON (builtins.readFile resolvedFile)
@@ -122,7 +128,7 @@ let
         toString (resolved.version or "none")
       }, which predates Swift 5.6. Run `swiftpm-purifier lock`, which resolves with the current toolchain."
     else if !(covered && sameSet) then
-      "swiftpm-purifier: ${toString lockFile} is out of date with Package.resolved in ${toString src}. Run `swiftpm-purifier lock`."
+      "swiftpm-purifier: ${toString lockFile} is out of date with ${toString resolvedFile}. Run `swiftpm-purifier lock`."
     else
       null;
   problems = if problem == null then [ ] else [ problem ];
