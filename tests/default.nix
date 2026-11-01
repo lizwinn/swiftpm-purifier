@@ -16,6 +16,13 @@ let
     doCheck = true;
   };
 
+  # A package with a dependency by path inside its source, which has a
+  # dependency from git of its own.
+  paths = buildSwiftPMProject { src = ./fixtures/paths; };
+
+  # A macro, which builds against swift-syntax.
+  macro = buildSwiftPMProject { src = ./fixtures/macro; };
+
   # Runs a command and compares what it prints.
   prints =
     name: command: expected:
@@ -51,6 +58,10 @@ in
   fixture-hello =
     prints "fixture-hello" "${lib.getExe hello.packages.hello} Nix Swift Nix"
       "Hello, Nix!\nHello, Swift!";
+
+  fixture-paths = prints "fixture-paths" (lib.getExe paths.packages.paths) "NIX SWIFT";
+
+  fixture-macro = prints "fixture-macro" (lib.getExe macro.packages.macro) "6 * 7 = 42";
 
   # The source archive of the package, which is the package of its
   # automatic library product, holds the manifest and no build state.

@@ -451,8 +451,16 @@ def install(root: Path):
     (root / STATE_DIR / "links.json").write_text(json.dumps(links) + "\n")
 
 
+# The SwiftPM subcommands that build, and so would download prebuilt
+# swift-syntax libraries for macros. The lock does not record prebuilts,
+# so these build swift-syntax from source, as the sandboxed build does.
+BUILDING_SUBCOMMANDS = ("build", "test", "run")
+
+
 def swift_command(arguments):
     swift = tool("swift")
+    if arguments and arguments[0] in BUILDING_SUBCOMMANDS:
+        arguments = [arguments[0], "--disable-experimental-prebuilts", *arguments[1:]]
     try:
         root = find_root(Path.cwd())
     except PurifierError:

@@ -1,0 +1,118 @@
+{
+  "artifacts": [
+    {
+      "git": {
+        "leaveDotGit": false,
+        "rev": "87e50f483c54e6efd60e885f7f5aa946cee68023",
+        "submodules": true,
+        "url": "https://github.com/apple/swift-algorithms.git"
+      },
+      "hash": "sha256-cJfOxBB74V7ZE4g6OehYIdtmqYnSFIkJLpkxPo9jiUo=",
+      "path": "Packages/swift-algorithms"
+    },
+    {
+      "git": {
+        "leaveDotGit": false,
+        "rev": "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "submodules": true,
+        "url": "https://github.com/apple/swift-numerics.git"
+      },
+      "hash": "sha256-bRkiRuxb4O3SmpsGZ5YaUR4cV3IQoES+u3xZTCzaQ+c=",
+      "path": "Packages/swift-numerics"
+    }
+  ],
+  "manifestHash": "1cd4f3ca60847c044e9db6a868d4a0b7ede7be4a4261acf1673442385ff5b976",
+  "package": "paths",
+  "products": [
+    {
+      "name": "paths",
+      "type": "executable"
+    }
+  ],
+  "resolvedHash": "sha256-VrEAZqMY0KYZxfBVzLd7e+4gDW+4aMW/HRd+GNaCPpw=",
+  "swiftVersion": "6.3.3",
+  "version": 1,
+  "workspaceState": {
+    "object": {
+      "artifacts": [],
+      "dependencies": [
+        {
+          "basedOn": null,
+          "packageRef": {
+            "identity": "shout",
+            "kind": "fileSystem",
+            "location": "@root@/Libraries/Shout",
+            "name": "Shout"
+          },
+          "state": {
+            "name": "fileSystem",
+            "path": "@root@/Libraries/Shout"
+          },
+          "subpath": "shout"
+        },
+        {
+          "basedOn": {
+            "basedOn": null,
+            "packageRef": {
+              "identity": "swift-algorithms",
+              "kind": "remoteSourceControl",
+              "location": "https://github.com/apple/swift-algorithms.git",
+              "name": "swift-algorithms"
+            },
+            "state": {
+              "checkoutState": {
+                "revision": "87e50f483c54e6efd60e885f7f5aa946cee68023",
+                "version": "1.2.1"
+              },
+              "name": "sourceControlCheckout"
+            },
+            "subpath": "swift-algorithms"
+          },
+          "packageRef": {
+            "identity": "swift-algorithms",
+            "kind": "remoteSourceControl",
+            "location": "https://github.com/apple/swift-algorithms.git",
+            "name": "swift-algorithms"
+          },
+          "state": {
+            "name": "edited",
+            "path": null
+          },
+          "subpath": "swift-algorithms"
+        },
+        {
+          "basedOn": {
+            "basedOn": null,
+            "packageRef": {
+              "identity": "swift-numerics",
+              "kind": "remoteSourceControl",
+              "location": "https://github.com/apple/swift-numerics.git",
+              "name": "swift-numerics"
+            },
+            "state": {
+              "checkoutState": {
+                "revision": "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+                "version": "1.1.1"
+              },
+              "name": "sourceControlCheckout"
+            },
+            "subpath": "swift-numerics"
+          },
+          "packageRef": {
+            "identity": "swift-numerics",
+            "kind": "remoteSourceControl",
+            "location": "https://github.com/apple/swift-numerics.git",
+            "name": "swift-numerics"
+          },
+          "state": {
+            "name": "edited",
+            "path": null
+          },
+          "subpath": "swift-numerics"
+        }
+      ],
+      "prebuilts": []
+    },
+    "version": 7
+  }
+}

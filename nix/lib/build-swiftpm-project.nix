@@ -128,6 +128,11 @@ let
 
         swiftpmBuildConfig = buildConfig;
 
+        # SwiftPM downloads prebuilt swift-syntax libraries for macros when
+        # it can. The lock does not record them, so swift-syntax builds
+        # from source, here and in the interactive mode.
+        swiftpmFlags = [ "--disable-experimental-prebuilts" ] ++ (extraArgs.swiftpmFlags or [ ]);
+
         # Clang and SwiftPM keep caches in the home directory, which the
         # sandbox does not have.
         preConfigure = ''
@@ -157,6 +162,7 @@ let
         "nativeBuildInputs"
         "preConfigure"
         "postInstall"
+        "swiftpmFlags"
       ]
     );
 
