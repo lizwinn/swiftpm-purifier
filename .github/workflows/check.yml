@@ -7,9 +7,10 @@
 # swiftpm-purifier command with its unit tests, and the formatting. The
 # other jobs run the sections of tests/cli.sh, which need the network or
 # run Nix, and so cannot run in the Nix sandbox. Each job is named for the
-# contract check it runs. The sandbox of a runner may forbid user
-# namespaces, so conformance-offline cuts the network with the command in
-# SWIFTPM_PURIFIER_TEST_OFFLINE.
+# contract check it runs. A runner forbids unprivileged user namespaces, so
+# conformance-offline cuts the network with a network namespace that root
+# creates, and runs the commands as the runner user inside it, through the
+# command in SWIFTPM_PURIFIER_TEST_OFFLINE.
 name: check
 
 on:
@@ -51,7 +52,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
       - name: Work with the network cut off
-        run: nix shell 'nixpkgs#python3' 'nixpkgs#util-linux' -c tests/cli.sh offline
+        run: |
+          export SWIFTPM_PURIFIER_TEST_OFFLINE="sudo -E unshare -n setpriv --reuid=$(id -u) --regid=$(id -g) --clear-groups"
+          nix shell 'nixpkgs#python3' -c tests/cli.sh offline
 
   conformance-update:
     runs-on: ubuntu-latest
