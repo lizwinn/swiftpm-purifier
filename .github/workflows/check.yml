@@ -3,11 +3,13 @@
 # Checks every pull request and every push to main.
 #
 # `flake-check` builds the flake's checks: the fixtures offline from their
-# lockfiles, the swiftpm-purifier command with its unit tests, and the
-# formatting. `cli` runs tests/cli.sh, which needs the network and runs
-# Nix, and so cannot run in the Nix sandbox: it relocks the fixtures and
-# compares the lockfiles, exercises the interactive mode, and locks, builds
-# and publishes a package against a stand-in registry.
+# lockfiles, the conformance checks that run in the sandbox, the
+# swiftpm-purifier command with its unit tests, and the formatting. The
+# other jobs run the sections of tests/cli.sh, which need the network or
+# run Nix, and so cannot run in the Nix sandbox. Each job is named for the
+# contract check it runs. The sandbox of a runner may forbid user
+# namespaces, so conformance-offline cuts the network with the command in
+# SWIFTPM_PURIFIER_TEST_OFFLINE.
 name: check
 
 on:
@@ -27,10 +29,42 @@ jobs:
       - name: Build the checks
         run: nix flake check --print-build-logs
 
+  conformance-relock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Relock the fixtures
+        run: nix shell 'nixpkgs#python3' -c tests/cli.sh relock
+
+  conformance-rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Rebuild a fixture
+        run: nix shell 'nixpkgs#python3' -c tests/cli.sh rebuild
+
+  conformance-offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Work with the network cut off
+        run: nix shell 'nixpkgs#python3' 'nixpkgs#util-linux' -c tests/cli.sh offline
+
+  conformance-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Update a fixture
+        run: nix shell 'nixpkgs#python3' -c tests/cli.sh update
+
   cli:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
-      - name: Run tests/cli.sh
-        run: nix shell 'nixpkgs#python3' -c tests/cli.sh
+      - name: Run the interactive, tampered and registry sections
+        run: nix shell 'nixpkgs#python3' -c tests/cli.sh interactive tampered registry

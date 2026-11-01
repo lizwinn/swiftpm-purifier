@@ -20,6 +20,9 @@
 #   and `swift run` work with no network (conformance-offline). The
 #   commands run under `unshare -rn`, or under the command prefix in
 #   SWIFTPM_PURIFIER_TEST_OFFLINE.
+# - update: `swiftpm-purifier update` moves a pin of an old version forward
+#   in Package.resolved and in the purifier lockfile, and both then pass the
+#   stale check (conformance-update).
 # - registry: a dependency from a package registry, against a stand-in
 #   registry (tests/registry.py): `swiftpm-purifier publish` uploads a
 #   package's source archive, a second package depends on it by registry
@@ -51,7 +54,7 @@ fail() {
 project() {
   echo "
     let
-      flake = builtins.getFlake \"$repo\";
+      flake = builtins.getFlake \"git+file://$repo\";
       pkgs = import flake.inputs.nixpkgs {
         system = builtins.currentSystem;
         overlays = [ flake.overlays.default ];
@@ -96,14 +99,14 @@ interactive() {
   "$bin/swift" test > /dev/null || fail "swift test failed"
 
   echo "== a stale lockfile stops swift and names swiftpm-purifier lock"
-  cp Package.resolved "$work/Package.resolved"
-  echo >> Package.resolved
+  cp Package.swift "$work/Package.swift"
+  echo "// edited" >> Package.swift
   if "$bin/swift" build 2> "$work/stale.err" > /dev/null; then
     fail "swift build ran with a stale lockfile"
   fi
   grep -q 'run `swiftpm-purifier lock`' "$work/stale.err" || fail "the stop does not name swiftpm-purifier lock: $(cat "$work/stale.err")"
   [ ! -e Packages/swift-collections ] || fail "the links stayed with a stale lockfile"
-  cp "$work/Package.resolved" Package.resolved
+  cp "$work/Package.swift" Package.swift
 
   echo "== uninstall removes the links"
   "$bin/swiftpm-purifier" prefetch
@@ -136,7 +139,7 @@ import swiftpm_purifier
 path = sys.argv[1]
 lock = json.load(open(path))
 # Another valid SHA-256 hash: the fetch succeeds, and its content does not match.
-lock["artifacts"][0]["hash"] = "sha256-" + "A" * 43 + "="
+lock["pins"]["swift-collections"]["hash"] = "sha256-" + "A" * 43 + "="
 lock["contentHash"] = swiftpm_purifier.content_hash(lock)
 open(path, "w").write(json.dumps(lock, indent=2, sort_keys=True) + "\n")
 EOF
@@ -166,6 +169,35 @@ offline() {
   cd "$work"
 }
 
+update() {
+  echo "== update moves both lockfiles forward"
+  fixture hello update
+  cd "$work/update"
+  # Pin swift-collections at its 1.1.0 tag, the oldest version the manifest allows.
+  local old
+  # An annotated tag lists its tag object first and its commit second.
+  old=$(git ls-remote https://github.com/apple/swift-collections.git refs/tags/1.1.0 'refs/tags/1.1.0^{}' | tail -n 1 | cut -f1)
+  [ -n "$old" ] || fail "could not read the revision of the swift-collections 1.1.0 tag"
+  python3 - "$old" << 'EOF'
+import json, sys
+resolved = json.load(open("Package.resolved"))
+for pin in resolved["pins"]:
+    if pin["identity"] == "swift-collections":
+        pin["state"] = {"revision": sys.argv[1], "version": "1.1.0"}
+open("Package.resolved", "w").write(json.dumps(resolved, indent=2) + "\n")
+EOF
+  "$bin/swiftpm-purifier" lock
+  grep -q "$old" swiftpm-purifier.lock.json || fail "the lock did not keep the old pin"
+  "$bin/swiftpm-purifier" update swift-collections
+  if grep -q "$old" Package.resolved swiftpm-purifier.lock.json; then
+    fail "update left the old revision in a lockfile"
+  fi
+  "$bin/swiftpm-purifier" lock 2>&1 | grep -q 'up to date' || fail "lock found the lockfile stale after update"
+  nix build --impure --dry-run --expr "($(project "$work/update")).project" \
+    || fail "the Nix evaluation found the lockfile stale after update"
+  cd "$work"
+}
+
 registry() {
   echo "== a dependency from a package registry"
   mkdir -p "$work/archives"
@@ -175,7 +207,8 @@ registry() {
     [ -s "$work/port" ] && break
     sleep 0.1
   done
-  local url=http://127.0.0.1:$(cat "$work/port")
+  local url
+  url=http://127.0.0.1:$(cat "$work/port")
 
   # The package to publish, with no dependencies.
   mkdir -p "$work/greeter/Sources/Greeter"
@@ -228,9 +261,9 @@ EOF
   python3 - "$url" << 'EOF'
 import json, sys
 lock = json.load(open("swiftpm-purifier.lock.json"))
-[entry] = lock["artifacts"]
-assert entry["path"] == "Packages/nix/greeter/1.0.0", entry
-assert entry["archive"] == {"url": f"{sys.argv[1]}/nix/greeter/1.0.0.zip", "mirrors": [], "stripTop": True}, entry
+[pin] = lock["pins"].values()
+assert pin["version"] == "1.0.0", pin
+assert pin["url"] == f"{sys.argv[1]}/nix/greeter/1.0.0.zip", pin
 EOF
 
   # The Nix daemon fetches outside this process, where the registry on
@@ -251,11 +284,11 @@ EOF
 
 sections=("$@")
 if [ ${#sections[@]} -eq 0 ]; then
-  sections=(relock interactive tampered rebuild offline registry)
+  sections=(relock interactive tampered rebuild offline update registry)
 fi
 for section in "${sections[@]}"; do
   case "$section" in
-    relock | interactive | tampered | rebuild | offline | registry) "$section" ;;
+    relock | interactive | tampered | rebuild | offline | update | registry) "$section" ;;
     *) fail "no section $section" ;;
   esac
 done

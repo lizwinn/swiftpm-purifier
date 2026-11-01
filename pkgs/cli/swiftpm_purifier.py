@@ -413,7 +413,10 @@ def products(package: Path, env, isolation):
     return result, description["name"]
 
 
-def relock(root: Path):
+def relock(root: Path, update=None):
+    """Locks the package. SwiftPM resolves it, keeping the pins of
+    Package.resolved; with `update`, a list of package identities, SwiftPM
+    updates those packages first, or every package for an empty list."""
     with tempfile.TemporaryDirectory(prefix="swiftpm-purifier-") as temporary:
         work = Path(temporary)
         # SwiftPM names the root package after its directory, and records
@@ -424,7 +427,14 @@ def relock(root: Path):
         env = dict(os.environ, CLANG_MODULE_CACHE_PATH=str(work / "clang-module-cache"))
         isolation = swiftpm_isolation(work)
         print("swiftpm-purifier: resolving with an empty cache", file=sys.stderr)
-        run([tool("swift"), "package", *isolation, "resolve"], cwd=package, env=env)
+        if update is None:
+            run([tool("swift"), "package", *isolation, "resolve"], cwd=package, env=env)
+        else:
+            run(
+                [tool("swift"), "package", *isolation, "update", *update],
+                cwd=package,
+                env=env,
+            )
 
         resolved = package / "Package.resolved"
         if resolved.exists():
@@ -633,6 +643,18 @@ def unlink(root: Path):
     shutil.rmtree(root / STATE_DIR, ignore_errors=True)
 
 
+def tree_entries(tree: Path) -> list:
+    """The paths of the links in a built tree, relative to its root: one per
+    fetched dependency or binary target, each pointing into the store."""
+    found = []
+    for directory, names, files in os.walk(tree):
+        for name in names + files:
+            path = Path(directory) / name
+            if path.is_symlink():
+                found.append(str(path.relative_to(tree)))
+    return sorted(found)
+
+
 def prefetch(root: Path):
     """Realizes, through Nix, everything day-to-day development needs: the
     locked dependencies and the toolchain with sourcekit-lsp, each kept by a
@@ -667,8 +689,8 @@ def prefetch(root: Path):
     )
     tree = gc_root.resolve()
     links = []
-    for entry in lock["artifacts"]:
-        target = root / entry["path"]
+    for entry in tree_entries(tree):
+        target = root / entry
         if target.exists() or target.is_symlink():
             if target.is_symlink() and str(os.readlink(target)).startswith(
                 "/nix/store/"
@@ -680,8 +702,8 @@ def prefetch(root: Path):
                     "move it away, or run SwiftPM without swiftpm-purifier"
                 )
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.symlink_to(os.readlink(tree / entry["path"]))
-        links.append(entry["path"])
+        target.symlink_to(os.readlink(tree / entry))
+        links.append(entry)
     state = (
         (tree / "workspace-state.json.in")
         .read_text()
@@ -759,6 +781,15 @@ def main(argv=None):
         "lock", help="lock the package, unless its lockfile is up to date"
     )
     commands.add_parser("relock", help="lock the package")
+    updating = commands.add_parser(
+        "update",
+        help="update the dependencies in Package.resolved through SwiftPM, then lock",
+    )
+    updating.add_argument(
+        "packages",
+        nargs="*",
+        help="the package identities to update (default: every package)",
+    )
     commands.add_parser(
         "prefetch",
         help="realize the locked dependencies and the toolchain, and link them into the package",
@@ -790,6 +821,8 @@ def main(argv=None):
             lock_command(root, force=False)
         elif options.command == "relock":
             lock_command(root, force=True)
+        elif options.command == "update":
+            relock(root, update=options.packages)
         elif options.command == "prefetch":
             prefetch(root)
         elif options.command == "uninstall":
