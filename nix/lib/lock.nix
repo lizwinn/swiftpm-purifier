@@ -23,11 +23,15 @@
 # Needs no nixpkgs. `lockFile` is a path, or an absolute path as a string.
 { lockFile, src }:
 let
-  lock = builtins.fromJSON (builtins.readFile lockFile);
+  relock = "Run `swiftpm-purifier relock` to write it again.";
+
+  # Nix cannot catch a parse error, so a lockfile that is not valid JSON
+  # fails evaluation, and the context names the command that fixes it.
+  lock = builtins.addErrorContext "swiftpm-purifier: ${toString lockFile} is not valid JSON. ${relock}" (
+    builtins.fromJSON (builtins.readFile lockFile)
+  );
 
   supportedVersion = import ./lock-version.nix;
-
-  relock = "Run `swiftpm-purifier relock` to write it again.";
 
   fields = [
     "version"
