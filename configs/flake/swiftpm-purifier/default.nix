@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-{ ... }:
+{ closure-lib, ... }:
 {
   config,
   inputs,
@@ -8,21 +8,20 @@
 }:
 {
 
-  imports = [ inputs.flake-parts.flakeModules.partitions ];
+  imports = [
+    inputs.flake-parts.flakeModules.partitions
+    closure-lib.caisson.modules.flake."purifier/purifier-packages"
+  ];
 
   debug = false;
-  caisson = {
-    libOverlays.exported = libOverlays: {
-      inherit (libOverlays) default;
-    };
 
-    # The package set applies the `default` entry of this flake's package
-    # overlay registry (pkg-overlays/) by default, and the flake exports it
-    # as `pkgOverlays` and as the plain `overlays.default`. The flake's
-    # `packages` are set below, to the derivations of the scope.
-    nixpkgs = {
-      packages.export.enabled = false;
-    };
+  # The flake's `packages` are the derivations of the scope
+  # `pkgs.swiftpm-purifier`: the `cli` and the `toolchain`. The builder is a
+  # function, so it stays out.
+  purifier.scope = "swiftpm-purifier";
+
+  caisson.libOverlays.exported = libOverlays: {
+    inherit (libOverlays) default;
   };
 
   # `nix run github:nix-purifiers/swiftpm-purifier -- lock` locks the
@@ -33,11 +32,7 @@
   perSystem =
     { pkgs, ... }:
     {
-      # The derivations of the scope `pkgs.swiftpm-purifier`: the `cli` and
-      # the `toolchain`. The builder is a function, so it stays out.
-      packages = lib.filterAttrs (_: lib.isDerivation) pkgs.swiftpm-purifier // {
-        default = pkgs.swiftpm-purifier.cli;
-      };
+      packages.default = pkgs.swiftpm-purifier.cli;
       devShells.default = pkgs.mkShell {
         packages = [ pkgs.swiftpm-purifier.toolchain ];
       };
