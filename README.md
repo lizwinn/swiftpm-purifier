@@ -132,6 +132,14 @@ archives to attach to a release.
   `.package(url: "/path/to/repo")` dependency names a repository that
   exists only on one machine, so no lockfile can make it fetchable
   elsewhere. Depend on it by path inside the package, or by its remote URL.
+- **Editor support is untested.** The toolchain includes sourcekit-lsp,
+  and the interactive mode also writes its workspace state into
+  `.build/index-build`, where sourcekit-lsp builds its background index.
+  In the Nix build sandbox, nixpkgs' sourcekit-lsp 6.3.3 reports that it
+  cannot find the SourceKit plugin of its toolchain and cannot create a
+  build server, so it resolves no symbols, with or without
+  swiftpm-purifier, and no check covers it until nixpkgs' sourcekit-lsp
+  works there.
 - **No prebuilt swift-syntax.** SwiftPM 6 downloads prebuilt swift-syntax
   libraries for macros when it can. The lock does not record them, so the
   build and the interactive mode pass `--disable-experimental-prebuilts`

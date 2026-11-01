@@ -29,6 +29,10 @@ MANIFEST_PATTERN = re.compile(r"Package(@swift-[0-9.]+)?\.swift")
 # What the interactive mode keeps under .build: the Nix GC root of the
 # realized tree, and a record of the links it made.
 STATE_DIR = Path(".build") / "swiftpm-purifier"
+# The scratch directories whose workspace state the interactive mode
+# writes: the scratch directory of SwiftPM, and the one where sourcekit-lsp
+# builds its background index, which keeps a workspace state of its own.
+SCRATCH_DIRECTORIES = (Path(".build"), Path(".build") / "index-build")
 
 
 class PurifierError(Exception):
@@ -536,9 +540,11 @@ def unlink(root: Path):
         link = root / relative
         if link.is_symlink():
             link.unlink()
-    state = root / ".build" / "workspace-state.json"
-    if (root / STATE_DIR / "links.json").exists() and state.exists():
-        state.unlink()
+    if (root / STATE_DIR / "links.json").exists():
+        for scratch in SCRATCH_DIRECTORIES:
+            state = root / scratch / "workspace-state.json"
+            if state.exists():
+                state.unlink()
     shutil.rmtree(root / STATE_DIR, ignore_errors=True)
 
 
@@ -591,7 +597,9 @@ def install(root: Path):
         .read_text()
         .replace(ROOT_PLACEHOLDER, str(root.resolve()))
     )
-    (root / ".build" / "workspace-state.json").write_text(state)
+    for scratch in SCRATCH_DIRECTORIES:
+        (root / scratch).mkdir(parents=True, exist_ok=True)
+        (root / scratch / "workspace-state.json").write_text(state)
     (root / STATE_DIR / "links.json").write_text(json.dumps(links) + "\n")
 
 

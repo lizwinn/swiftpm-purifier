@@ -3,7 +3,9 @@
 # A Swift toolchain whose `swift` runs through `swiftpm-purifier swift`:
 # in a package with an up-to-date lockfile, SwiftPM builds, tests and runs
 # on the locked dependencies, offline. The rest of the toolchain (swiftc,
-# the SwiftPM subcommands) comes from nixpkgs unchanged.
+# the SwiftPM subcommands, and sourcekit-lsp, the language server editors
+# use) comes from nixpkgs unchanged; sourcekit-lsp reads the locked
+# dependencies from the same links.
 {
   symlinkJoin,
   writeShellScriptBin,
@@ -22,6 +24,7 @@ symlinkJoin {
     cli
     swiftPackages.swift
     swiftPackages.swiftpm
+    swiftPackages.sourcekit-lsp
   ];
   meta.mainProgram = "swift";
 }
