@@ -1,49 +1,91 @@
 # swiftpm-purifier
 
-A command and a Nix library that make Nix the dependency backend of a
-[SwiftPM](https://www.swift.org/documentation/package-manager/) package.
-SwiftPM still resolves and plans the build, and `Package.resolved` stays
-its lockfile. `swiftpm-purifier lock` writes `swiftpm-purifier.lock.json`,
-which records what `Package.resolved` lacks, such as the content hash of
-each pin. Nix then builds the package in its sandbox from the two files,
-with no generated Nix files to commit, and `swift` runs offline on the same
-locked dependencies during development.
+swiftpm-purifier keeps SwiftPM's development workflow on locked,
+Nix-resolved dependencies. Use the normal build and test commands in your
+working tree; building the project itself in the Nix sandbox is an
+optional next step.
+
+It follows the [purifier contract](https://github.com/nix-purifiers/purifier/blob/main/CONTRACT.md).
 
 swiftpm-purifier meets the
 [purifier contract](https://github.com/nix-purifiers/purifier/blob/main/CONTRACT.md)
 that every nix-purifier shares.
 
+## Installation
+
+Install the integration into your Nix profile once:
+
+```sh
+nix profile install 'github:nix-purifiers/swiftpm-purifier#toolchain'
+```
+
+This installs the `swift` wrapper. Use it for the locked
+development workflow below. With no purifier lockfile, it warns on standard
+error and runs the ordinary tool with impure resolution.
+
+`nix shell` makes an integration available temporarily instead of installing
+it. Keep using the activation steps below where a project environment or
+prefetched cache is required.
+
 ## Quickstart
 
-Lock the package in the current directory, and commit both lockfiles,
-`Package.resolved` and `swiftpm-purifier.lock.json`, to the repository of
-the project:
+Install Nix, then run the following from your existing project's root.
+The setup prepares the locked dependencies and the integration that
+SwiftPM's normal commands use:
 
 ```zsh
-nix run github:nix-purifiers/swiftpm-purifier -- lock
+nix shell 'github:nix-purifiers/swiftpm-purifier#toolchain'
+swiftpm-purifier lock
+swift build
+swift test
 ```
 
-Then build the project from its directory, with no Nix file added to it.
-Replace `hello` with a product of the package:
+Commit the lockfiles that the lock command writes, including the build
+tool's own lockfile when it has one. Keep using the project's usual build,
+test and editor commands with this setup. Nix provides the locked
+dependencies; the development commands above run outside the Nix sandbox.
+No project Nix files are needed for this workflow.
 
-```zsh
-nix build --impure --expr '
-  let
-    purifier = builtins.getFlake "github:nix-purifiers/swiftpm-purifier";
-    pkgs = import purifier.inputs.nixpkgs {
-      system = builtins.currentSystem;
-      overlays = [ purifier.overlays.default ];
-    };
-  in
-  (pkgs.swiftpm-purifier.buildSwiftPMProject { src = ./.; }).packages.hello'
-```
+Sandboxed builds of the whole project are an optional
+[next step](#building-the-project-with-nix).
 
-This uses the purifier's pinned nixpkgs, matching the lock command above.
-To build with ambient `<nixpkgs>` from your Nix search path instead,
-replace `import purifier.inputs.nixpkgs` with `import <nixpkgs>`.
-Both forms need no Nix files in your project. The build tool and language
-versions must match the lockfile; with ambient nixpkgs, lock with the
-purifier from that package set or pass a compatible toolchain to the builder.
+## Development loop
+
+`nix shell 'github:nix-purifiers/swiftpm-purifier#toolchain'` gives a shell whose
+`swift` runs through `swiftpm-purifier swift`. In a package with an
+up-to-date lockfile, `swift build`, `swift test` and `swift run` use the
+locked dependencies, which the shell links into `Packages/` and
+`.build/artifacts/` from the Nix store. Outside that shell, run
+`swiftpm-purifier swift build`.
+
+`swiftpm-purifier` is a standalone command that runs SwiftPM, not a SwiftPM
+package plugin. `swiftpm-purifier lock` records the downloads and keeps the
+pins of `Package.resolved` as they are. It relocks when `Package.swift` or the pins
+changed since the lockfile was made, and `relock` relocks regardless. A
+relock of an unchanged package reproduces the lockfile byte for byte.
+
+`swiftpm-purifier update [<package>...]` updates the pins through the
+`swift package update` command of SwiftPM, for every package or the named
+ones, and then relocks the lockfile against the result.
+
+`swiftpm-purifier publish <scope.name> <version>` builds the `release` with
+Nix and uploads it (SE-0391) to the registry configured for the scope, or
+to `--registry <url>`. `SWIFTPM_PURIFIER_REGISTRY_TOKEN` is sent as a
+bearer token.
+
+For an external build, every command takes `--lockfile <path>` and
+`--tool-lockfile <path>`, or reads `SWIFTPM_PURIFIER_LOCKFILE` and
+`SWIFTPM_PURIFIER_TOOL_LOCKFILE`. Either one takes precedence over the
+default location. The dev shell of a flake that calls the builder can set
+both variables to the paths it passes as `lockFile` and `packageResolved`.
+
+## Building the project with Nix
+
+Once the native development workflow is working, you can also build and
+test the whole project in the Nix sandbox. For this step, keep a flake or
+another Nix build definition in the project's repository, or maintain an
+external packaging repository that points at its sources and lockfiles.
+The builder consumes the same lockfiles as the development workflow.
 
 The flake adds one attribute to the package set: the scope
 `pkgs.swiftpm-purifier`, which holds the builder `buildSwiftPMProject`, the
@@ -132,35 +174,29 @@ another version of SwiftPM. The commands take `--lockfile <path>` and
 leave the copy in the tree as it is, and `lock` starts from the copy in the
 tree when the outside one does not exist yet.
 
-## Development loop
+### One-off builds without a project Nix file
 
-`nix develop github:nix-purifiers/swiftpm-purifier` gives a shell whose
-`swift` runs through `swiftpm-purifier swift`. In a package with an
-up-to-date lockfile, `swift build`, `swift test` and `swift run` use the
-locked dependencies, which the shell links into `Packages/` and
-`.build/artifacts/` from the Nix store. Outside that shell, run
-`swiftpm-purifier swift build`.
+For an ad hoc build, the builder can also be evaluated directly from the
+project root. Replace the example package name with one from your project:
 
-`swiftpm-purifier` is a standalone command that runs SwiftPM, not a SwiftPM
-package plugin. `swiftpm-purifier lock` records the downloads and keeps the
-pins of `Package.resolved` as they are. It relocks when `Package.swift` or the pins
-changed since the lockfile was made, and `relock` relocks regardless. A
-relock of an unchanged package reproduces the lockfile byte for byte.
+```zsh
+nix build --impure --expr '
+  let
+    purifier = builtins.getFlake "github:nix-purifiers/swiftpm-purifier";
+    pkgs = import purifier.inputs.nixpkgs {
+      system = builtins.currentSystem;
+      overlays = [ purifier.overlays.default ];
+    };
+  in
+  (pkgs.swiftpm-purifier.buildSwiftPMProject { src = ./.; }).packages.hello'
+```
 
-`swiftpm-purifier update [<package>...]` updates the pins through the
-`swift package update` command of SwiftPM, for every package or the named
-ones, and then relocks the lockfile against the result.
-
-`swiftpm-purifier publish <scope.name> <version>` builds the `release` with
-Nix and uploads it (SE-0391) to the registry configured for the scope, or
-to `--registry <url>`. `SWIFTPM_PURIFIER_REGISTRY_TOKEN` is sent as a
-bearer token.
-
-For an external build, every command takes `--lockfile <path>` and
-`--tool-lockfile <path>`, or reads `SWIFTPM_PURIFIER_LOCKFILE` and
-`SWIFTPM_PURIFIER_TOOL_LOCKFILE`. Either one takes precedence over the
-default location. The dev shell of a flake that calls the builder can set
-both variables to the paths it passes as `lockFile` and `packageResolved`.
+This uses the purifier's pinned nixpkgs, matching the lock command above.
+To build with ambient `<nixpkgs>` from your Nix search path instead,
+replace `import purifier.inputs.nixpkgs` with `import <nixpkgs>`.
+Both forms need no Nix files in your project. The build tool and language
+versions must match the lockfile; with ambient nixpkgs, lock with the
+purifier from that package set or pass a compatible toolchain to the builder.
 
 ## Working offline
 
@@ -227,6 +263,11 @@ which links with LLD. On macOS, SwiftPM builds against the Xcode toolchain,
 which the Nix sandbox does not have.
 
 ## Examples
+
+For day-to-day work on these projects, use the native-tool setup and
+commands in [Quickstart](#quickstart) and [Development loop](#development-loop).
+The Nix expressions below show optional sandboxed packaging of those
+projects.
 
 ### vapor/toolbox
 

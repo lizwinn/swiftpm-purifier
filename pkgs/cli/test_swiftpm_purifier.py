@@ -284,5 +284,58 @@ class LockPin(unittest.TestCase):
         )
 
 
+class UnlockedWrapperTest(unittest.TestCase):
+    def test_unlocked_delegation_preserves_arguments_streams_and_status(self):
+        import json
+        import os
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            native = root / "native"
+            native.write_text(
+                "#!" + sys.executable + "\n"
+                "import json, sys\n"
+                "print(json.dumps(sys.argv[1:]))\n"
+                "print('native stderr', file=sys.stderr)\n"
+                "sys.exit(23)\n"
+            )
+            native.chmod(0o755)
+            environment = dict(os.environ)
+            environment["SWIFTPM_PURIFIER_SWIFT"] = str(native)
+            pass
+            arguments = ["build", "argument with spaces", "--example=a=b"]
+            command = [
+                sys.executable,
+                str(Path(__file__).with_name("swiftpm_purifier.py")),
+                *["swift"],
+                *arguments,
+            ]
+            result = subprocess.run(
+                command, cwd=root, env=environment, capture_output=True, text=True
+            )
+            self.assertEqual(result.returncode, 23, result.stderr)
+            self.assertEqual(json.loads(result.stdout), arguments)
+            self.assertIn("warning:", result.stderr)
+            self.assertIn("impurely", result.stderr)
+            self.assertIn("native stderr", result.stderr)
+            self.assertEqual([p.name for p in root.iterdir()], ["native"])
+
+            # An existing malformed lock must never use this fallback.
+            for name, contents in {
+                "Package.swift": "// swift-tools-version: 6.0\n"
+            }.items():
+                (root / name).write_text(contents)
+            (root / "swiftpm-purifier.lock.json").write_text("{broken json")
+            result = subprocess.run(
+                command, cwd=root, env=environment, capture_output=True, text=True
+            )
+            self.assertNotEqual(result.returncode, 23)
+            self.assertNotIn("native stderr", result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

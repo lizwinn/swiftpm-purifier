@@ -758,14 +758,24 @@ BUILDING_SUBCOMMANDS = ("build", "test", "run")
 
 def swift_command(arguments):
     swift = tool("swift")
-    if arguments and arguments[0] in BUILDING_SUBCOMMANDS:
-        arguments = [arguments[0], "--disable-experimental-prebuilts", *arguments[1:]]
     try:
         root = find_root(Path.cwd())
     except PurifierError:
+        print(
+            "swiftpm-purifier: warning: no swiftpm-purifier.lock.json found; running swift impurely. Run `swiftpm-purifier lock` to use Nix-resolved dependencies.",
+            file=sys.stderr,
+        )
         os.execvp(swift, [swift, *arguments])
     lock = read_lock(root)
-    if lock is None or arguments[:1] in ([], ["--version"], ["--help"]):
+    if lock is None:
+        print(
+            "swiftpm-purifier: warning: no swiftpm-purifier.lock.json found; running swift impurely. Run `swiftpm-purifier lock` to use Nix-resolved dependencies.",
+            file=sys.stderr,
+        )
+        os.execvp(swift, [swift, *arguments])
+    if arguments and arguments[0] in BUILDING_SUBCOMMANDS:
+        arguments = [arguments[0], "--disable-experimental-prebuilts", *arguments[1:]]
+    if arguments[:1] in ([], ["--version"], ["--help"]):
         os.execvp(swift, [swift, *arguments])
     if not is_current(root, lock):
         # SwiftPM would resolve and download what the lock does not hold.
