@@ -1,0 +1,109 @@
+{
+  "artifacts": [
+    {
+      "git": {
+        "leaveDotGit": false,
+        "rev": "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+        "submodules": true,
+        "url": "https://github.com/apple/swift-argument-parser.git"
+      },
+      "hash": "sha256-BWm2ZbNIvlamNp8cxoicFlAcujjhH22VPzs67lEIXWU=",
+      "path": "Packages/swift-argument-parser"
+    },
+    {
+      "git": {
+        "leaveDotGit": false,
+        "rev": "f96b909e1a9e469620bc5037c1e24e00153f376f",
+        "submodules": true,
+        "url": "https://github.com/apple/swift-collections.git"
+      },
+      "hash": "sha256-ELQN0pXbIr3HmOB6QvNOas2rMYEYdweKOMOm/tEzLRM=",
+      "path": "Packages/swift-collections"
+    }
+  ],
+  "manifestHash": "7dd5b7b4ff3b90f43fcc3ebfc94a8d6af08d760340dc4d2b3dcbc1afbbbe28c5",
+  "package": "hello",
+  "products": [
+    {
+      "name": "hello",
+      "type": "executable"
+    },
+    {
+      "linkage": "automatic",
+      "name": "Greeting",
+      "type": "library"
+    }
+  ],
+  "resolvedHash": "sha256-irCwmAOyvyY6Jh34eJ2XQli1CklhktIlVisVEiBRcD4=",
+  "swiftVersion": "6.3.3",
+  "version": 1,
+  "workspaceState": {
+    "object": {
+      "artifacts": [],
+      "dependencies": [
+        {
+          "basedOn": {
+            "basedOn": null,
+            "packageRef": {
+              "identity": "swift-argument-parser",
+              "kind": "remoteSourceControl",
+              "location": "https://github.com/apple/swift-argument-parser.git",
+              "name": "swift-argument-parser"
+            },
+            "state": {
+              "checkoutState": {
+                "revision": "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+                "version": "1.8.2"
+              },
+              "name": "sourceControlCheckout"
+            },
+            "subpath": "swift-argument-parser"
+          },
+          "packageRef": {
+            "identity": "swift-argument-parser",
+            "kind": "remoteSourceControl",
+            "location": "https://github.com/apple/swift-argument-parser.git",
+            "name": "swift-argument-parser"
+          },
+          "state": {
+            "name": "edited",
+            "path": null
+          },
+          "subpath": "swift-argument-parser"
+        },
+        {
+          "basedOn": {
+            "basedOn": null,
+            "packageRef": {
+              "identity": "swift-collections",
+              "kind": "remoteSourceControl",
+              "location": "https://github.com/apple/swift-collections.git",
+              "name": "swift-collections"
+            },
+            "state": {
+              "checkoutState": {
+                "revision": "f96b909e1a9e469620bc5037c1e24e00153f376f",
+                "version": "1.7.5"
+              },
+              "name": "sourceControlCheckout"
+            },
+            "subpath": "swift-collections"
+          },
+          "packageRef": {
+            "identity": "swift-collections",
+            "kind": "remoteSourceControl",
+            "location": "https://github.com/apple/swift-collections.git",
+            "name": "swift-collections"
+          },
+          "state": {
+            "name": "edited",
+            "path": null
+          },
+          "subpath": "swift-collections"
+        }
+      ],
+      "prebuilts": []
+    },
+    "version": 7
+  }
+}
