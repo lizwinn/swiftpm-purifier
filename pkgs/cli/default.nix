@@ -5,7 +5,6 @@
 # unit tests run in the build.
 {
   lib,
-  path,
   stdenvNoCC,
   makeWrapper,
   python3,
@@ -56,7 +55,6 @@ stdenvNoCC.mkDerivation {
     fileset = lib.fileset.unions [
       ./swiftpm_purifier.py
       ./test_swiftpm_purifier.py
-      ../../nix/lib
     ];
   };
 
@@ -72,17 +70,17 @@ stdenvNoCC.mkDerivation {
 
   installPhase = ''
     runHook preInstall
-    mkdir -p $out/libexec/swiftpm-purifier $out/share/swiftpm-purifier
+    mkdir -p $out/libexec/swiftpm-purifier
     cp pkgs/cli/swiftpm_purifier.py $out/libexec/swiftpm-purifier/
-    cp -r nix/lib $out/share/swiftpm-purifier/nix-lib
+    # SWIFTPM_PURIFIER_FLAKE is this flake's source, whose package set the
+    # interactive mode and `publish` build with, so they use the builder
+    # and the purifier library a Nix build uses.
     makeWrapper ${lib.getExe python3} $out/bin/swiftpm-purifier \
       --add-flags $out/libexec/swiftpm-purifier/swiftpm_purifier.py \
-      --set SWIFTPM_PURIFIER_NIX_LIB $out/share/swiftpm-purifier/nix-lib \
-      --set SWIFTPM_PURIFIER_NIXPKGS ${path} \
+      --set SWIFTPM_PURIFIER_FLAKE ${../..} \
       --set SWIFTPM_PURIFIER_SWIFT ${swiftPackages.swift}/bin/swift \
       --set SWIFTPM_PURIFIER_NIX_PREFETCH_GIT ${lib.getExe nix-prefetch-git} \
       --set SWIFTPM_PURIFIER_NIX ${lib.getExe nix} \
-      --set SWIFTPM_PURIFIER_NIX_BUILD ${nix}/bin/nix-build \
       --run 'source ${swiftEnvironment}'
     runHook postInstall
   '';

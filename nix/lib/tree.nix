@@ -7,35 +7,24 @@
 # with every package dependency marked as edited. The template names the
 # package root `@root@`; whoever links the tree into a package fills it in.
 #
-# `patchArtifact` (patch-artifact.nix) makes the prebuilt files of each
-# binary target run under Nix.
+# `fetchEntry` comes from the shared purifier library, and turns an entry
+# into a store path. `patchArtifact` (patch-artifact.nix) makes the
+# prebuilt files of each binary target run under Nix.
 {
   lock,
-  fetchurl,
-  fetchgit,
+  fetchEntry,
   runCommand,
-  unzip,
   patchArtifact,
 }:
 let
-  fetch = import ./fetch.nix {
-    inherit
-      lock
-      fetchurl
-      fetchgit
-      runCommand
-      unzip
-      ;
-  };
-
   isBinaryTarget = artifact: builtins.match "\\.build/artifacts/.*" artifact.path != null;
 
   place =
     artifact:
     if isBinaryTarget artifact then
-      patchArtifact (lock.artifactName artifact) (fetch artifact)
+      patchArtifact (lock.artifactName artifact) (fetchEntry artifact)
     else
-      fetch artifact;
+      fetchEntry artifact;
 
   links = builtins.concatStringsSep "\n" (
     map (artifact: ''

@@ -475,22 +475,10 @@ def publish(root: Path, identity: str, version: str, registry):
             raise PurifierError(
                 f"no registry is configured for {identity}; pass --registry"
             )
-    archive = output(
-        [
-            tool("nix-build"),
-            nix_lib() / "publish-archive.nix",
-            "--no-out-link",
-            "--arg",
-            "nixpkgs",
-            os.environ.get("SWIFTPM_PURIFIER_NIXPKGS", "<nixpkgs>"),
-            "--argstr",
-            "src",
-            root,
-            "--argstr",
-            "name",
-            name,
-        ]
-    ).strip()
+    archive = nix_build(
+        '(pkgs.buildSwiftPMProject { src = /. + builtins.getEnv "SWIFTPM_PURIFIER_ROOT"; }).sourceArchive',
+        {"SWIFTPM_PURIFIER_ROOT": str(root)},
+    )
     content_type, body = multipart(
         [
             ("source-archive", "application/zip", Path(archive).read_bytes()),
@@ -519,13 +507,34 @@ def publish(root: Path, identity: str, version: str, registry):
 # Interactive mode.
 
 
-def nix_lib() -> Path:
-    return Path(
-        os.environ.get(
-            "SWIFTPM_PURIFIER_NIX_LIB",
-            Path(__file__).resolve().parent.parent / "nix" / "lib",
-        )
+def nix_build(attribute: str, env: dict, out_link=None) -> str:
+    """Builds `attribute` of the package set of swiftpm-purifier's own flake
+    (its nixpkgs with its overlay), so the interactive mode and publishing
+    use the builder and library a Nix build uses. `env` holds the values the
+    expression reads with builtins.getEnv."""
+    flake = os.environ.get(
+        "SWIFTPM_PURIFIER_FLAKE", str(Path(__file__).resolve().parent.parent.parent)
     )
+    expression = f"""
+      let
+        flake = builtins.getFlake "path:{flake}";
+        pkgs = import flake.inputs.nixpkgs {{
+          system = builtins.currentSystem;
+          overlays = [ flake.overlays.default ];
+        }};
+      in
+      {attribute}
+    """
+    command = [
+        tool("nix"),
+        "build",
+        "--impure",
+        "--print-out-paths",
+        "--expr",
+        expression,
+    ]
+    command += ["--out-link", out_link] if out_link else ["--no-link"]
+    return output(command, env=dict(os.environ, **env)).strip()
 
 
 def recorded_links(root: Path) -> list:
@@ -560,20 +569,10 @@ def install(root: Path):
     unlink(root)
     (root / STATE_DIR).mkdir(parents=True, exist_ok=True)
     gc_root = root / STATE_DIR / "tree"
-    run(
-        [
-            tool("nix-build"),
-            nix_lib() / "realize.nix",
-            "--argstr",
-            "lockFile",
-            lock_file.resolve(),
-            "--arg",
-            "nixpkgs",
-            os.environ.get("SWIFTPM_PURIFIER_NIXPKGS", "<nixpkgs>"),
-            "--out-link",
-            gc_root,
-        ],
-        stdout=subprocess.DEVNULL,
+    nix_build(
+        'pkgs.buildSwiftPMTree (/. + builtins.getEnv "SWIFTPM_PURIFIER_LOCK")',
+        {"SWIFTPM_PURIFIER_LOCK": str(lock_file.resolve())},
+        out_link=gc_root,
     )
     tree = gc_root.resolve()
     links = []

@@ -21,6 +21,10 @@ each record into an entry the Nix library can fetch:
 | A package from a registry (`.package(id:)`) | the registry's source archive, unpacked at `Packages/<scope>/<name>/<version>` |
 | A remote binary target (`.binaryTarget(url:checksum:)`) | the archive at `.build/artifacts/...`, by the checksum in the manifest |
 
+The lockfile entries follow the entry shapes of
+[purifier](https://github.com/nix-purifiers/purifier), the library that
+the nix-purifiers share, and that library fetches them.
+
 A dependency by path (`.package(path:)`) and a local binary target
 (`.binaryTarget(path:)`) are part of the package source, and the lockfile
 records only where they are.

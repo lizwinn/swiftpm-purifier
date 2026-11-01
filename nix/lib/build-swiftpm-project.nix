@@ -27,25 +27,26 @@
 # build.
 {
   lib,
+  pkgs,
+  purifier,
   stdenv,
   swift,
   swiftpm,
   fetchurl,
   fetchgit,
   runCommand,
-  unzip,
   zip,
   gnutar,
   gzip,
   callPackage,
-}@pkgs:
+}@defaults:
 {
   src,
   lockFile ? src + "/swiftpm-purifier.lock.json",
   doCheck ? false,
   buildConfig ? "release",
-  fetchurl ? pkgs.fetchurl,
-  fetchgit ? pkgs.fetchgit,
+  fetchurl ? defaults.fetchurl,
+  fetchgit ? defaults.fetchgit,
   artifactBuildInputs ? [ ],
   ...
 }@args:
@@ -53,13 +54,8 @@ let
   lock = import ./lock.nix { inherit lockFile; };
 
   tree = import ./tree.nix {
-    inherit
-      lock
-      fetchurl
-      fetchgit
-      runCommand
-      unzip
-      ;
+    inherit lock runCommand;
+    fetchEntry = purifier.fetchEntry { inherit pkgs fetchurl fetchgit; };
     patchArtifact = callPackage ./patch-artifact.nix { buildInputs = artifactBuildInputs; };
   };
 

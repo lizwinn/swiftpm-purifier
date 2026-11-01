@@ -166,7 +166,7 @@ EOF
 # 127.0.0.1 may be out of reach. A fetch's store path depends only on its
 # name and hash, so adding the archive under the entry's name does the
 # fetch in advance, and the build still checks the hash the lock recorded.
-nix store add-file --name Packages_nix_greeter_1.0.0 "$work/archives/nix.greeter-1.0.0.zip" > /dev/null
+nix store add-file --name 1.0.0.zip "$work/archives/nix.greeter-1.0.0.zip" > /dev/null
 
 nix build --impure --out-link "$work/consumer-build" --expr "
   let
