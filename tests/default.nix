@@ -23,6 +23,10 @@ let
   # A macro, which builds against swift-syntax.
   macro = buildSwiftPMProject { src = ./fixtures/macro; };
 
+  # A binary target from an artifact bundle, whose Linux executable a
+  # prebuild command runs before each build.
+  binary = buildSwiftPMProject { src = ./fixtures/binary; };
+
   # Runs a command and compares what it prints.
   prints =
     name: command: expected:
@@ -41,6 +45,7 @@ let
       builtins.toJSON {
         inherit version;
         package = "p";
+        rootDirectory = "p";
         swiftVersion = "6.3.3";
         resolvedHash = null;
         manifestHash = "";
@@ -62,6 +67,18 @@ in
   fixture-paths = prints "fixture-paths" (lib.getExe paths.packages.paths) "NIX SWIFT";
 
   fixture-macro = prints "fixture-macro" (lib.getExe macro.packages.macro) "6 * 7 = 42";
+
+  fixture-binary =
+    prints "fixture-binary" (lib.getExe binary.packages.binary)
+      "built with a prebuild command from a binary target";
+
+  # The patched executable of the artifact bundle runs.
+  fixture-binary-artifact =
+    prints "fixture-binary-artifact"
+      "${binary.tree}/.build/artifacts/binary/SwiftLintBinary/SwiftLintBinary.artifactbundle/linux/${
+        if pkgs'.stdenv.hostPlatform.isAarch64 then "arm64" else "amd64"
+      }/swiftlint version"
+      "0.65.1";
 
   # The source archive of the package, which is the package of its
   # automatic library product, holds the manifest and no build state.

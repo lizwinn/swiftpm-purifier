@@ -1,0 +1,56 @@
+{
+  "artifacts": [
+    {
+      "archive": {
+        "mirrors": [],
+        "stripTop": false,
+        "url": "https://github.com/realm/SwiftLint/releases/download/0.65.1/SwiftLintBinary.artifactbundle.zip"
+      },
+      "hash": "sha256-w6HXdkfKGMG36b59vGzUSQ0mQi8ogUt2NwJE/2GXCGk=",
+      "path": ".build/artifacts/binary/SwiftLintBinary"
+    }
+  ],
+  "manifestHash": "e98a9a959bca074ffc21e98954d49963c275c196e051e8cfe492a95b32beb9a5",
+  "package": "binary",
+  "products": [
+    {
+      "name": "binary",
+      "type": "executable"
+    }
+  ],
+  "resolvedHash": null,
+  "rootDirectory": "binary",
+  "swiftVersion": "6.3.3",
+  "version": 1,
+  "workspaceState": {
+    "object": {
+      "artifacts": [
+        {
+          "kind": {
+            "typedArtifactsArchive": {
+              "_0": [
+                "executable"
+              ]
+            }
+          },
+          "packageRef": {
+            "identity": "binary",
+            "kind": "root",
+            "location": "@root@",
+            "name": "binary"
+          },
+          "path": "@root@/.build/artifacts/binary/SwiftLintBinary/SwiftLintBinary.artifactbundle",
+          "source": {
+            "checksum": "c3a1d77647ca18c1b7e9be7dbc6cd4490d26422f28814b76370244ff61970869",
+            "type": "remote",
+            "url": "https://github.com/realm/SwiftLint/releases/download/0.65.1/SwiftLintBinary.artifactbundle.zip"
+          },
+          "targetName": "SwiftLintBinary"
+        }
+      ],
+      "dependencies": [],
+      "prebuilts": []
+    },
+    "version": 7
+  }
+}

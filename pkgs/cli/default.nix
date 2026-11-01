@@ -13,6 +13,7 @@
   nix,
   nix-prefetch-git,
   git,
+  unzip,
 }:
 let
   # The environment nixpkgs' setup hooks give a build with the Swift
@@ -25,6 +26,8 @@ let
       swiftPackages.swift
       swiftPackages.swiftpm
       git
+      # SwiftPM unpacks binary-target archives with unzip.
+      unzip
     ];
     buildInputs = [
       swiftPackages.swift

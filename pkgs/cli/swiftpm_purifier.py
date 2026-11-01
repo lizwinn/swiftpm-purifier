@@ -304,7 +304,10 @@ def swift_version(env) -> str:
 def relock(root: Path):
     with tempfile.TemporaryDirectory(prefix="swiftpm-purifier-") as temporary:
         work = Path(temporary)
-        package = work / "package"
+        # SwiftPM names the root package after its directory, and records
+        # binary targets under that name, so the copy keeps the name.
+        package = work / "packages" / root.name
+        package.parent.mkdir()
         copy_package(root, package)
         env = dict(os.environ, CLANG_MODULE_CACHE_PATH=str(work / "clang-module-cache"))
         isolation = swiftpm_isolation(work)
@@ -340,6 +343,7 @@ def relock(root: Path):
         lock = {
             "version": LOCK_VERSION,
             "package": package_name,
+            "rootDirectory": root.name,
             "swiftVersion": swift_version(env),
             "resolvedHash": resolved_hash(root),
             "manifestHash": manifest_hash(root),

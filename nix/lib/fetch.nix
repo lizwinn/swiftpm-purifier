@@ -51,10 +51,13 @@ else if artifact ? archive then
     }
     ''
       mkdir unpacked
-      case "$archive" in
-        *.zip) unzip -q "$archive" -d unpacked ;;
-        *) tar -xf "$archive" -C unpacked ;;
-      esac
+      # The fetched file is named after the entry's path, so its format
+      # comes from its content.
+      if unzip -tqq "$archive" > /dev/null 2>&1; then
+        unzip -q "$archive" -d unpacked
+      else
+        tar -xf "$archive" -C unpacked
+      fi
       if [ -n "$stripTop" ]; then
         entries=(unpacked/*)
         if [ "''${#entries[@]}" -ne 1 ] || [ ! -d "''${entries[0]}" ]; then

@@ -20,4 +20,5 @@ import ./tree.nix {
     runCommand
     unzip
     ;
+  patchArtifact = pkgs.callPackage ./patch-artifact.nix { };
 }

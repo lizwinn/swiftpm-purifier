@@ -20,6 +20,7 @@
     }
   ],
   "resolvedHash": "sha256-zITfc+nRXb43X78mjGzofkacz0mBKOBqO7jAcgOmSCs=",
+  "rootDirectory": "macro",
   "swiftVersion": "6.3.3",
   "version": 1,
   "workspaceState": {

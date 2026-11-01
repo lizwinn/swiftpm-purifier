@@ -21,8 +21,10 @@
 # Arguments: `src`, the package root; `lockFile`, which defaults to the
 # lockfile in `src`; `doCheck`, which runs `swift test`; `buildConfig`,
 # `release` or `debug`; `fetchurl` and `fetchgit`, which replace the
-# package set's fetchers, for credentials or mirrors; and any other
-# argument of stdenv.mkDerivation, given to the build.
+# package set's fetchers, for credentials or mirrors; `artifactBuildInputs`,
+# the libraries the prebuilt files of binary targets need beyond the C and
+# C++ runtime; and any other argument of stdenv.mkDerivation, given to the
+# build.
 {
   lib,
   stdenv,
@@ -35,6 +37,7 @@
   zip,
   gnutar,
   gzip,
+  callPackage,
 }@pkgs:
 {
   src,
@@ -43,6 +46,7 @@
   buildConfig ? "release",
   fetchurl ? pkgs.fetchurl,
   fetchgit ? pkgs.fetchgit,
+  artifactBuildInputs ? [ ],
   ...
 }@args:
 let
@@ -56,6 +60,7 @@ let
       runCommand
       unzip
       ;
+    patchArtifact = callPackage ./patch-artifact.nix { buildInputs = artifactBuildInputs; };
   };
 
   # The lock is current when `Package.resolved` and the manifests hash to
@@ -110,6 +115,7 @@ let
     "buildConfig"
     "fetchurl"
     "fetchgit"
+    "artifactBuildInputs"
   ];
 
   project =
@@ -127,6 +133,18 @@ let
         ++ (extraArgs.nativeBuildInputs or [ ]);
 
         swiftpmBuildConfig = buildConfig;
+
+        # SwiftPM names the root package after its directory, and the
+        # workspace state the lock recorded uses the name of the package's
+        # directory at the lock run.
+        postUnpack = ''
+          if [ "$(basename "$sourceRoot")" != ${lib.escapeShellArg lock.rootDirectory} ]; then
+            mkdir swiftpm-purifier-root
+            mv "$sourceRoot" swiftpm-purifier-root/${lib.escapeShellArg lock.rootDirectory}
+            sourceRoot=swiftpm-purifier-root/${lib.escapeShellArg lock.rootDirectory}
+          fi
+        ''
+        + (extraArgs.postUnpack or "");
 
         # SwiftPM downloads prebuilt swift-syntax libraries for macros when
         # it can. The lock does not record them, so swift-syntax builds
@@ -160,6 +178,7 @@ let
       }
       // builtins.removeAttrs extraArgs [
         "nativeBuildInputs"
+        "postUnpack"
         "preConfigure"
         "postInstall"
         "swiftpmFlags"

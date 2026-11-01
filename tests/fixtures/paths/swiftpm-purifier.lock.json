@@ -30,6 +30,7 @@
     }
   ],
   "resolvedHash": "sha256-VrEAZqMY0KYZxfBVzLd7e+4gDW+4aMW/HRd+GNaCPpw=",
+  "rootDirectory": "paths",
   "swiftVersion": "6.3.3",
   "version": 1,
   "workspaceState": {
