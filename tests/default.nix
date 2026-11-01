@@ -84,8 +84,8 @@ in
   # automatic library product, holds the manifest and no build state.
   fixture-hello-source = runCommand "fixture-hello-source" { nativeBuildInputs = [ pkgs'.unzip ]; } ''
     test ${hello.packages.Greeting} = ${hello.sourceArchive}
-    unzip -l ${hello.sourceArchive} | grep -q ' Package.swift$'
-    if unzip -l ${hello.sourceArchive} | grep -qE ' (\.build|Packages)/'; then exit 1; fi
+    unzip -l ${hello.sourceArchive} | grep -q ' hello/Package.swift$'
+    if unzip -l ${hello.sourceArchive} | grep -qE ' hello/(\.build|Packages)/'; then exit 1; fi
     touch $out
   '';
 

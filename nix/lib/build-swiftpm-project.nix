@@ -193,17 +193,7 @@ let
 
   sourceArchive =
     assert current;
-    runCommand "${name}-source.zip"
-      {
-        nativeBuildInputs = [ zip ];
-      }
-      ''
-        cp -r ${src} source
-        chmod -R u+w source
-        cd source
-        rm -rf .build Packages
-        zip -qrX $out .
-      '';
+    import ./source-archive.nix { inherit runCommand zip; } { inherit src name; };
 
   packageOf =
     product:

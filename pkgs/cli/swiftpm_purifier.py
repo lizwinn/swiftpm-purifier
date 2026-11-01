@@ -376,6 +376,88 @@ def lock_command(root: Path, force: bool):
     relock(root)
 
 
+# Publishing.
+
+
+def multipart(fields):
+    """A multipart/form-data body of (name, content type, bytes) fields."""
+    boundary = "swiftpm-purifier-" + hashlib.sha256(os.urandom(16)).hexdigest()[:24]
+    body = b""
+    for name, content_type, data in fields:
+        body += (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{name}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode()
+        body += data + b"\r\n"
+    body += f"--{boundary}--\r\n".encode()
+    return f"multipart/form-data; boundary={boundary}", body
+
+
+def publish(root: Path, identity: str, version: str, registry):
+    """Builds the package's source archive through Nix and publishes it to
+    a package registry (SE-0391), the archive the registry then serves to
+    SwiftPM."""
+    import urllib.request
+
+    lock = read_json(root / LOCK_NAME)
+    if lock is None or not is_current(root, lock):
+        raise PurifierError(
+            f"{LOCK_NAME} is missing or out of date; run `swiftpm-purifier lock` first"
+        )
+    scope, dot, name = identity.partition(".")
+    if not dot or not scope or not name:
+        raise PurifierError(
+            f"{identity} is not a registry identity of the form scope.name"
+        )
+    if registry is None:
+        known = registries(root, Path.home() / ".swiftpm" / "configuration")
+        registry = known.get(scope) or known.get("[default]")
+        if registry is None:
+            raise PurifierError(
+                f"no registry is configured for {identity}; pass --registry"
+            )
+    archive = output(
+        [
+            tool("nix-build"),
+            nix_lib() / "publish-archive.nix",
+            "--no-out-link",
+            "--arg",
+            "nixpkgs",
+            os.environ.get("SWIFTPM_PURIFIER_NIXPKGS", "<nixpkgs>"),
+            "--argstr",
+            "src",
+            root,
+            "--argstr",
+            "name",
+            name,
+        ]
+    ).strip()
+    content_type, body = multipart(
+        [
+            ("source-archive", "application/zip", Path(archive).read_bytes()),
+            ("metadata", "application/json", b"{}"),
+        ]
+    )
+    url = f"{registry.rstrip('/')}/{urllib.parse.quote(scope)}/{urllib.parse.quote(name)}/{version}"
+    request = urllib.request.Request(url, data=body, method="PUT")
+    request.add_header("Content-Type", content_type)
+    request.add_header("Accept", "application/vnd.swift.registry.v1+json")
+    token = os.environ.get("SWIFTPM_PURIFIER_REGISTRY_TOKEN")
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(request) as response:
+            print(
+                f"swiftpm-purifier: published {identity} {version} to {registry} ({response.status})",
+                file=sys.stderr,
+            )
+    except urllib.error.HTTPError as error:
+        raise PurifierError(
+            f"{url} answered {error.code}: {error.read().decode(errors='replace')}"
+        )
+
+
 # Interactive mode.
 
 
@@ -485,6 +567,15 @@ def swift_command(arguments):
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    # Everything after `swift` belongs to SwiftPM, options included, so it
+    # bypasses argparse.
+    if argv[:1] == ["swift"]:
+        try:
+            swift_command(argv[1:])
+        except (PurifierError, subprocess.CalledProcessError) as error:
+            print(f"swiftpm-purifier: {error}", file=sys.stderr)
+            return 1
     parser = argparse.ArgumentParser(
         prog="swiftpm-purifier", description=__doc__.splitlines()[0]
     )
@@ -502,6 +593,17 @@ def main(argv=None):
         "install", help="link the locked dependencies into the package for SwiftPM"
     )
     commands.add_parser("uninstall", help="remove the links install made")
+    publishing = commands.add_parser(
+        "publish", help="publish the package's source archive to a registry"
+    )
+    publishing.add_argument(
+        "identity", help="the package's registry identity, scope.name"
+    )
+    publishing.add_argument("version")
+    publishing.add_argument(
+        "--registry",
+        help="the registry URL (default: the one configured for the scope)",
+    )
     swift = commands.add_parser("swift", help="run swift on the locked dependencies")
     swift.add_argument("arguments", nargs=argparse.REMAINDER)
     options = parser.parse_args(argv)
@@ -518,6 +620,8 @@ def main(argv=None):
             install(root)
         elif options.command == "uninstall":
             unlink(root)
+        elif options.command == "publish":
+            publish(root, options.identity, options.version, options.registry)
     except (PurifierError, subprocess.CalledProcessError) as error:
         print(f"swiftpm-purifier: {error}", file=sys.stderr)
         return 1

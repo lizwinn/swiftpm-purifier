@@ -156,7 +156,7 @@ class LockDependency(unittest.TestCase):
                 "name": "nix.greeter",
             },
             "state": {"name": "registryDownload", "version": "1.2.0"},
-            "subpath": "nix/greeter",
+            "subpath": "nix/greeter/1.2.0",
         }
         with mock.patch.object(
             sp, "prefetch_file", return_value="sha256-y"
@@ -168,7 +168,7 @@ class LockDependency(unittest.TestCase):
         self.assertEqual(
             entry,
             {
-                "path": "Packages/nix/greeter",
+                "path": "Packages/nix/greeter/1.2.0",
                 "archive": {
                     "url": "https://registry.example/nix/greeter/1.2.0.zip",
                     "mirrors": [],
