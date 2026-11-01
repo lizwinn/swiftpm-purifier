@@ -51,9 +51,13 @@ def manifest_hash(root: Path) -> str:
     """The hash of the package's manifests, as build-swiftpm-project.nix
     computes it: the SHA-256 of the JSON list of [name, hex SHA-256] of
     each manifest, in name order, written without spaces."""
-    manifests = sorted(p.name for p in root.iterdir() if MANIFEST_PATTERN.fullmatch(p.name))
+    manifests = sorted(
+        p.name for p in root.iterdir() if MANIFEST_PATTERN.fullmatch(p.name)
+    )
     listing = [[name, file_sha256(root / name)] for name in manifests]
-    return hashlib.sha256(json.dumps(listing, separators=(",", ":")).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(listing, separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 def resolved_hash(root: Path):
@@ -64,7 +68,9 @@ def resolved_hash(root: Path):
 
 
 def is_current(root: Path, lock: dict) -> bool:
-    return lock.get("resolvedHash") == resolved_hash(root) and lock.get("manifestHash") == manifest_hash(root)
+    return lock.get("resolvedHash") == resolved_hash(root) and lock.get(
+        "manifestHash"
+    ) == manifest_hash(root)
 
 
 def find_root(start: Path) -> Path:
@@ -130,7 +136,10 @@ def mirrors(package: Path, config: Path) -> dict:
     """SwiftPM's mirrors, original URL to mirror URL. The package
     configuration wins over the user configuration, as in SwiftPM."""
     result = {}
-    for source in (config / "mirrors.json", package / ".swiftpm" / "configuration" / "mirrors.json"):
+    for source in (
+        config / "mirrors.json",
+        package / ".swiftpm" / "configuration" / "mirrors.json",
+    ):
         data = read_json(source) or {}
         for entry in data.get("object", []):
             result[entry["original"]] = entry["mirror"]
@@ -141,7 +150,10 @@ def registries(package: Path, config: Path) -> dict:
     """SwiftPM's registries: the default URL under "[default]", and one per
     scope. The package configuration wins over the user configuration."""
     result = {}
-    for source in (config / "registries.json", package / ".swiftpm" / "configuration" / "registries.json"):
+    for source in (
+        config / "registries.json",
+        package / ".swiftpm" / "configuration" / "registries.json",
+    ):
         data = read_json(source) or {}
         for scope, registry in data.get("registries", {}).items():
             result[scope] = registry["url"].rstrip("/")
@@ -150,13 +162,35 @@ def registries(package: Path, config: Path) -> dict:
 
 def prefetch_git(url: str, rev: str) -> str:
     result = json.loads(
-        output([tool("nix-prefetch-git"), "--quiet", "--fetch-submodules", "--url", url, "--rev", rev])
+        output(
+            [
+                tool("nix-prefetch-git"),
+                "--quiet",
+                "--fetch-submodules",
+                "--url",
+                url,
+                "--rev",
+                rev,
+            ]
+        )
     )
     return result["hash"]
 
 
 def prefetch_file(url: str) -> str:
-    result = json.loads(output([tool("nix"), "store", "prefetch-file", "--hash-type", "sha256", "--json", url]))
+    result = json.loads(
+        output(
+            [
+                tool("nix"),
+                "store",
+                "prefetch-file",
+                "--hash-type",
+                "sha256",
+                "--json",
+                url,
+            ]
+        )
+    )
     return result["hash"]
 
 
@@ -208,7 +242,9 @@ def lock_dependency(dependency, package: Path, config: Path):
             "hash": prefetch_file(url),
         }
         return entry, edited
-    raise PurifierError(f"{ref['identity']}: SwiftPM state {state['name']!r} of kind {kind!r} is not supported")
+    raise PurifierError(
+        f"{ref['identity']}: SwiftPM state {state['name']!r} of kind {kind!r} is not supported"
+    )
 
 
 def lock_artifact(artifact, package: Path):
@@ -243,7 +279,11 @@ def template(value, package: Path):
 
 
 def products(package: Path, env, isolation):
-    description = json.loads(output([tool("swift"), "package", *isolation, "dump-package"], cwd=package, env=env))
+    description = json.loads(
+        output(
+            [tool("swift"), "package", *isolation, "dump-package"], cwd=package, env=env
+        )
+    )
     result = []
     for product in description["products"]:
         kind, detail = next(iter(product["type"].items()))
@@ -255,7 +295,9 @@ def products(package: Path, env, isolation):
 
 
 def swift_version(env) -> str:
-    match = re.search(r"Swift version (\S+)", output([tool("swift"), "--version"], env=env))
+    match = re.search(
+        r"Swift version (\S+)", output([tool("swift"), "--version"], env=env)
+    )
     return match.group(1) if match else "unknown"
 
 
@@ -290,7 +332,9 @@ def relock(root: Path):
                 artifacts.append(entry)
             binaries.append(record)
         if state["object"].get("prebuilts"):
-            raise PurifierError("SwiftPM downloaded prebuilt libraries, which swiftpm-purifier does not lock yet")
+            raise PurifierError(
+                "SwiftPM downloaded prebuilt libraries, which swiftpm-purifier does not lock yet"
+            )
 
         package_products, package_name = products(package, env, isolation)
         lock = {
@@ -302,7 +346,11 @@ def relock(root: Path):
             "products": package_products,
             "workspaceState": template(
                 {
-                    "object": {"artifacts": binaries, "dependencies": dependencies, "prebuilts": []},
+                    "object": {
+                        "artifacts": binaries,
+                        "dependencies": dependencies,
+                        "prebuilts": [],
+                    },
                     "version": state["version"],
                 },
                 package,
@@ -310,7 +358,10 @@ def relock(root: Path):
             "artifacts": sorted(artifacts, key=lambda a: a["path"]),
         }
     (root / LOCK_NAME).write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
-    print(f"swiftpm-purifier: wrote {LOCK_NAME} with {len(lock['artifacts'])} entries", file=sys.stderr)
+    print(
+        f"swiftpm-purifier: wrote {LOCK_NAME} with {len(lock['artifacts'])} entries",
+        file=sys.stderr,
+    )
 
 
 def lock_command(root: Path, force: bool):
@@ -325,7 +376,12 @@ def lock_command(root: Path, force: bool):
 
 
 def nix_lib() -> Path:
-    return Path(os.environ.get("SWIFTPM_PURIFIER_NIX_LIB", Path(__file__).resolve().parent.parent / "nix" / "lib"))
+    return Path(
+        os.environ.get(
+            "SWIFTPM_PURIFIER_NIX_LIB",
+            Path(__file__).resolve().parent.parent / "nix" / "lib",
+        )
+    )
 
 
 def recorded_links(root: Path) -> list:
@@ -374,7 +430,9 @@ def install(root: Path):
     for entry in lock["artifacts"]:
         target = root / entry["path"]
         if target.exists() or target.is_symlink():
-            if target.is_symlink() and str(os.readlink(target)).startswith("/nix/store/"):
+            if target.is_symlink() and str(os.readlink(target)).startswith(
+                "/nix/store/"
+            ):
                 target.unlink()
             else:
                 raise PurifierError(
@@ -384,7 +442,11 @@ def install(root: Path):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.symlink_to(os.readlink(tree / entry["path"]))
         links.append(entry["path"])
-    state = (tree / "workspace-state.json.in").read_text().replace(ROOT_PLACEHOLDER, str(root.resolve()))
+    state = (
+        (tree / "workspace-state.json.in")
+        .read_text()
+        .replace(ROOT_PLACEHOLDER, str(root.resolve()))
+    )
     (root / ".build" / "workspace-state.json").write_text(state)
     (root / STATE_DIR / "links.json").write_text(json.dumps(links) + "\n")
 
@@ -411,12 +473,22 @@ def swift_command(arguments):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="swiftpm-purifier", description=__doc__.splitlines()[0])
-    parser.add_argument("--package-path", type=Path, help="the package root (default: found from the current directory)")
+    parser = argparse.ArgumentParser(
+        prog="swiftpm-purifier", description=__doc__.splitlines()[0]
+    )
+    parser.add_argument(
+        "--package-path",
+        type=Path,
+        help="the package root (default: found from the current directory)",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("lock", help="lock the package, unless its lockfile is up to date")
+    commands.add_parser(
+        "lock", help="lock the package, unless its lockfile is up to date"
+    )
     commands.add_parser("relock", help="lock the package")
-    commands.add_parser("install", help="link the locked dependencies into the package for SwiftPM")
+    commands.add_parser(
+        "install", help="link the locked dependencies into the package for SwiftPM"
+    )
     commands.add_parser("uninstall", help="remove the links install made")
     swift = commands.add_parser("swift", help="run swift on the locked dependencies")
     swift.add_argument("arguments", nargs=argparse.REMAINDER)

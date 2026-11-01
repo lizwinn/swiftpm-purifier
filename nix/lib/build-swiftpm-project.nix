@@ -61,24 +61,31 @@ let
   # The lock is current when `Package.resolved` and the manifests hash to
   # what the lock run saw. The hashes are computed the way swiftpm-purifier
   # computes them.
-  sha256 = file: builtins.convertHash {
-    hash = builtins.hashFile "sha256" file;
-    hashAlgo = "sha256";
-    toHashFormat = "sri";
-  };
+  sha256 =
+    file:
+    builtins.convertHash {
+      hash = builtins.hashFile "sha256" file;
+      hashAlgo = "sha256";
+      toHashFormat = "sri";
+    };
   manifests = lib.sort (a: b: a < b) (
     builtins.filter (name: builtins.match "Package(@swift-[0-9.]+)?\\.swift" name != null) (
       builtins.attrNames (builtins.readDir src)
     )
   );
   manifestHash = builtins.hashString "sha256" (
-    builtins.toJSON (map (name: [
-      name
-      (builtins.hashFile "sha256" (src + "/${name}"))
-    ]) manifests)
+    builtins.toJSON (
+      map (name: [
+        name
+        (builtins.hashFile "sha256" (src + "/${name}"))
+      ]) manifests
+    )
   );
   resolvedHash =
-    if builtins.pathExists (src + "/Package.resolved") then sha256 (src + "/Package.resolved") else null;
+    if builtins.pathExists (src + "/Package.resolved") then
+      sha256 (src + "/Package.resolved")
+    else
+      null;
   current =
     (lock.resolvedHash == resolvedHash && lock.manifestHash == manifestHash)
     || throw "swiftpm-purifier: ${toString lockFile} is out of date with Package.swift or Package.resolved in ${toString src}. Run `swiftpm-purifier lock`.";
@@ -105,51 +112,53 @@ let
     "fetchgit"
   ];
 
-  project = assert current; stdenv.mkDerivation (
-    {
-      pname = name;
-      version = "locked";
-      inherit src doCheck;
+  project =
+    assert current;
+    stdenv.mkDerivation (
+      {
+        pname = name;
+        version = "locked";
+        inherit src doCheck;
 
-      nativeBuildInputs = [
-        swift
-        swiftpm
-      ]
-      ++ (extraArgs.nativeBuildInputs or [ ]);
+        nativeBuildInputs = [
+          swift
+          swiftpm
+        ]
+        ++ (extraArgs.nativeBuildInputs or [ ]);
 
-      swiftpmBuildConfig = buildConfig;
+        swiftpmBuildConfig = buildConfig;
 
-      # Clang and SwiftPM keep caches in the home directory, which the
-      # sandbox does not have.
-      preConfigure = ''
-        export CLANG_MODULE_CACHE_PATH=$TMPDIR/clang-module-cache
-        ${linkTree}
-      ''
-      + (extraArgs.preConfigure or "");
+        # Clang and SwiftPM keep caches in the home directory, which the
+        # sandbox does not have.
+        preConfigure = ''
+          export CLANG_MODULE_CACHE_PATH=$TMPDIR/clang-module-cache
+          ${linkTree}
+        ''
+        + (extraArgs.preConfigure or "");
 
-      # nixpkgs' install phase installs executables and dynamic libraries;
-      # static libraries are installed here.
-      postInstall = ''
-        products=$(swift build -c ${buildConfig} --show-bin-path)
-        for library in ${lib.escapeShellArgs staticLibraries}; do
-          install -D -t "$out/lib" "$products/lib$library.a"
-          for module in "$products"/Modules/*.swiftmodule "$products"/*.swiftmodule; do
-            [ -e "$module" ] && install -D -t "$out/lib/swift/${stdenv.hostPlatform.parsed.kernel.name}" "$module"
+        # nixpkgs' install phase installs executables and dynamic libraries;
+        # static libraries are installed here.
+        postInstall = ''
+          products=$(swift build -c ${buildConfig} --show-bin-path)
+          for library in ${lib.escapeShellArgs staticLibraries}; do
+            install -D -t "$out/lib" "$products/lib$library.a"
+            for module in "$products"/Modules/*.swiftmodule "$products"/*.swiftmodule; do
+              [ -e "$module" ] && install -D -t "$out/lib/swift/${stdenv.hostPlatform.parsed.kernel.name}" "$module"
+            done
           done
-        done
-      ''
-      + (extraArgs.postInstall or "");
+        ''
+        + (extraArgs.postInstall or "");
 
-      passthru = {
-        inherit lock tree;
-      };
-    }
-    // builtins.removeAttrs extraArgs [
-      "nativeBuildInputs"
-      "preConfigure"
-      "postInstall"
-    ]
-  );
+        passthru = {
+          inherit lock tree;
+        };
+      }
+      // builtins.removeAttrs extraArgs [
+        "nativeBuildInputs"
+        "preConfigure"
+        "postInstall"
+      ]
+    );
 
   productsOf = type: builtins.filter (product: product.type == type) lock.products;
   names = products: map (product: product.name) products;
