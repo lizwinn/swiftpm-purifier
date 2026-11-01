@@ -168,18 +168,28 @@ linker. nixpkgs expects the Swift 6.4 update, which links with LLD, to fix
 it, and aarch64-linux joins the flake's systems then. On macOS, SwiftPM
 builds against the Xcode toolchain, which the Nix sandbox does not have.
 
-## Real-world projects
+## Examples
 
-swift-format at `9f3ddd2` (swift-6.3.3-RELEASE) locks in 16 seconds, and it
-builds, runs and passes its configuration tests offline in the everyday
-loop. Its repository commits no `Package.resolved`, so a flake cannot build
-it externally yet, and no check builds it. After a dependency is added to
-it, `swift` stops with the stale-lockfile message, and a relock of 22
-seconds brings the loop back.
+The packages under `tests/fixtures` depend on real packages from GitHub, and
+CI locks and builds them:
 
-No check builds a real-world project yet. The candidate is
-[vapor/toolbox](https://github.com/vapor/toolbox) at `20.0.2`, which commits
-its `Package.resolved`.
+- `hello` depends on
+  [swift-argument-parser](https://github.com/apple/swift-argument-parser)
+  and [swift-collections](https://github.com/apple/swift-collections), and
+  has a test target.
+- `paths` depends on a package by path, which depends on
+  [swift-algorithms](https://github.com/apple/swift-algorithms).
+- `macro` builds a macro against
+  [swift-syntax](https://github.com/swiftlang/swift-syntax).
+- `binary` runs the Linux executable of a
+  [SwiftLint](https://github.com/realm/SwiftLint) artifact bundle in a
+  prebuild command.
+
+[swift-format](https://github.com/swiftlang/swift-format) at `9f3ddd2`
+(swift-6.3.3-RELEASE) is a larger package that was locked and built by hand,
+without a CI job. It locks in 16 seconds, and it builds, runs and passes its
+configuration tests offline in the everyday loop. Its repository commits no
+`Package.resolved`, so a flake cannot build it externally yet.
 
 ## Tests
 
