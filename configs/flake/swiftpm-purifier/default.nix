@@ -65,6 +65,7 @@
             checks = import ../../../tests {
               inherit pkgs;
               overlay = self.overlays.default;
+              library = self.lib.swiftpm-purifier;
             };
             treefmt.programs.nixfmt.enable = true;
             treefmt.programs.ruff-format.enable = true;

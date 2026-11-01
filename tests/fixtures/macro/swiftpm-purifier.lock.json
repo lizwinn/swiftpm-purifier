@@ -12,6 +12,7 @@
       "path": "Packages/swift-syntax"
     }
   ],
+  "contentHash": "sha256-TYcYileLmr1W2swApVfhcLS6axNPgnbpl+XgYNlKAy0=",
   "manifestHash": "b98f3b52b88b446a234f6448561fc3bee8ac98f5c6aaa4beaf869a8cc1943f7d",
   "package": "macro",
   "products": [
@@ -24,7 +25,7 @@
   "resolvedHash": "sha256-zITfc+nRXb43X78mjGzofkacz0mBKOBqO7jAcgOmSCs=",
   "rootDirectory": "macro",
   "swiftVersion": "6.3.3",
-  "version": 2,
+  "version": 3,
   "workspaceState": {
     "object": {
       "artifacts": [],

@@ -10,6 +10,7 @@
       "path": ".build/artifacts/binary/SwiftLintBinary"
     }
   ],
+  "contentHash": "sha256-U45DAvFM932oL7ESo+NFOQY1K5+NCraMZBc/7Rb3PYw=",
   "manifestHash": "e98a9a959bca074ffc21e98954d49963c275c196e051e8cfe492a95b32beb9a5",
   "package": "binary",
   "products": [
@@ -22,7 +23,7 @@
   "resolvedHash": null,
   "rootDirectory": "binary",
   "swiftVersion": "6.3.3",
-  "version": 2,
+  "version": 3,
   "workspaceState": {
     "object": {
       "artifacts": [

@@ -45,6 +45,7 @@
       "path": "Packages/swift-syntax"
     }
   ],
+  "contentHash": "sha256-evPcH6w6Vv8fDLUFiVDPaLwEuM1lNh3uO1OXcVzgI98=",
   "manifestHash": "f27af5a0ebfcb4e6b03a2fa5f9e4811072cd64fbe6480bccf3c456f9256b9acf",
   "package": "swift-format",
   "products": [
@@ -70,7 +71,7 @@
   "resolvedHash": "sha256-hMkpWjmwiZ0AvVyabmPuloslrVPqWiwurklsJjqLNVk=",
   "rootDirectory": "swift-format",
   "swiftVersion": "6.3.3",
-  "version": 2,
+  "version": 3,
   "workspaceState": {
     "object": {
       "artifacts": [],
@@ -112,7 +113,7 @@
               "identity": "swift-cmark",
               "kind": "remoteSourceControl",
               "location": "https://github.com/swiftlang/swift-cmark.git",
-              "name": "swift-cmark"
+              "name": "cmark-gfm"
             },
             "state": {
               "checkoutState": {
@@ -127,7 +128,7 @@
             "identity": "swift-cmark",
             "kind": "remoteSourceControl",
             "location": "https://github.com/swiftlang/swift-cmark.git",
-            "name": "swift-cmark"
+            "name": "cmark-gfm"
           },
           "state": {
             "name": "edited",

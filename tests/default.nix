@@ -1,37 +1,42 @@
 # SPDX-License-Identifier: MIT
 #
-# The flake's checks: builds of the fixtures from their lockfiles, each
-# run, the release archives, and the behaviour of the Nix library on its
-# own. tests/cli.sh covers the lock run and the interactive mode, which
-# need the network or run Nix, and so cannot run in the sandbox.
-{ pkgs, overlay }:
+# The flake's checks: builds of the fixtures and of a pinned real-world
+# project from their lockfiles, each run; the contract checks
+# (`conformance-*`) that can run in the sandbox; and the command with its
+# unit tests. The CI jobs conformance-relock, conformance-rebuild and
+# conformance-offline run the contract checks that need the network or
+# Nix itself (tests/cli.sh and .github/workflows/check.yml).
+{
+  pkgs,
+  overlay,
+  library,
+}:
 let
   pkgs' = pkgs.extend overlay;
-  inherit (pkgs') lib runCommand buildSwiftPMProject;
+  inherit (pkgs') lib runCommand;
+  build = args: library.buildSwiftPMProject ({ pkgs = pkgs'; } // args);
 
   # An executable and a library, with two dependencies from git and a
   # test target.
-  hello = buildSwiftPMProject {
-    src = ./fixtures/hello;
-    doCheck = true;
-  };
+  hello = build { src = ./fixtures/hello; };
 
   # A package with a dependency by path inside its source, which has a
   # dependency from git of its own.
-  paths = buildSwiftPMProject { src = ./fixtures/paths; };
+  paths = build { src = ./fixtures/paths; };
 
   # A macro, which builds against swift-syntax.
-  macro = buildSwiftPMProject { src = ./fixtures/macro; };
+  macro = build { src = ./fixtures/macro; };
 
   # A binary target from an artifact bundle, whose Linux executable a
   # prebuild command runs before each build.
-  binary = buildSwiftPMProject { src = ./fixtures/binary; };
+  binary = build { src = ./fixtures/binary; };
 
   # swift-format, a real-world project, at its swift-6.3.3-RELEASE tag. Its
-  # repository does not commit Package.resolved, so the build writes the
-  # copy its lockfile carries. The source is fetched at evaluation, so its
-  # manifests can be read without import-from-derivation.
-  swiftFormat = buildSwiftPMProject {
+  # repository commits neither Package.resolved nor a purifier lockfile, so
+  # the lockfile lies outside its source and carries Package.resolved. The
+  # source is fetched at evaluation, so its manifests can be read without
+  # import-from-derivation.
+  swiftFormat = build {
     src = builtins.fetchTree {
       type = "github";
       owner = "swiftlang";
@@ -54,47 +59,71 @@ let
       touch $out
     '';
 
-  lockWithVersion =
-    version:
-    builtins.toFile "swiftpm-purifier.lock.json" (
-      builtins.toJSON {
-        inherit version;
-        package = "p";
-        rootDirectory = "p";
-        swiftVersion = "6.3.3";
-        resolvedHash = null;
-        resolved = null;
-        manifestHash = "";
-        products = [ ];
-        workspaceState.object = {
-          dependencies = [ ];
-          artifacts = [ ];
-        };
-        artifacts = [ ];
-      }
-    );
-
-  # The hello fixture with its lockfile changed by `change`.
-  helloWithLock =
-    change:
-    buildSwiftPMProject {
+  # A lockfile with its contentHash computed as the lock run computes it.
+  rehash =
+    lock:
+    lock
+    // {
+      contentHash = builtins.convertHash {
+        hash = builtins.hashString "sha256" (builtins.toJSON (builtins.removeAttrs lock [ "contentHash" ]));
+        hashAlgo = "sha256";
+        toHashFormat = "sri";
+      };
+    };
+  helloLock = builtins.fromJSON (builtins.readFile ./fixtures/hello/swiftpm-purifier.lock.json);
+  lockFileOf = lock: builtins.toFile "swiftpm-purifier.lock.json" (builtins.toJSON lock);
+  # The hello fixture built with `lock` as its lockfile.
+  helloWith =
+    lock:
+    build {
       src = ./fixtures/hello;
-      lockFile = builtins.toFile "swiftpm-purifier.lock.json" (
-        builtins.toJSON (
-          change (builtins.fromJSON (builtins.readFile ./fixtures/hello/swiftpm-purifier.lock.json))
-        )
-      );
+      lockFile = lockFileOf lock;
     };
   refuses = project: !(builtins.tryEval project.project.drvPath).success;
+
+  lockWithVersion =
+    version:
+    lockFileOf (rehash {
+      inherit version;
+      package = "p";
+      rootDirectory = "p";
+      swiftVersion = "6.3.3";
+      resolvedHash = null;
+      resolved = null;
+      manifestHash = "";
+      products = [ ];
+      workspaceState.object = {
+        dependencies = [ ];
+        artifacts = [ ];
+      };
+      artifacts = [ ];
+      contentHash = "";
+    });
   readsVersion =
     version:
     (builtins.tryEval (import ../nix/lib/lock.nix { lockFile = lockWithVersion version; }).package)
     .success;
+
+  # The hello fixture without its lockfile and Package.resolved, which
+  # conformance-external gives from outside it.
+  helloSourceOnly = builtins.path {
+    path = ./fixtures/hello;
+    name = "hello";
+    filter =
+      path: type:
+      !(builtins.elem (baseNameOf path) [
+        "swiftpm-purifier.lock.json"
+        "Package.resolved"
+      ]);
+  };
 in
 {
   fixture-hello =
     prints "fixture-hello" "${lib.getExe hello.packages.hello} Nix Swift Nix"
       "Hello, Nix!\nHello, Swift!";
+
+  # The test target of the hello fixture, run in the sandbox.
+  fixture-hello-tests = hello.tests;
 
   fixture-paths = prints "fixture-paths" (lib.getExe paths.packages.paths) "NIX SWIFT";
 
@@ -117,49 +146,75 @@ in
       "printf 'let x=1\\n' | ${lib.getExe swiftFormat.packages.swift-format}"
       "let x = 1";
 
-  # The source archive of the package, which is the package of its
-  # automatic library product, holds the manifest and no build state.
-  fixture-hello-source = runCommand "fixture-hello-source" { nativeBuildInputs = [ pkgs'.unzip ]; } ''
-    test ${hello.packages.Greeting} = ${hello.sourceArchive}
-    unzip -l ${hello.sourceArchive} | grep -q ' hello/Package.swift$'
-    if unzip -l ${hello.sourceArchive} | grep -qE ' hello/(\.build|Packages)/'; then exit 1; fi
-    touch $out
-  '';
-
-  # The release archive of the hello fixture, with sums that verify.
+  # The release of the hello fixture is its source archive, which is also
+  # the package of its automatic library product: the manifest under one
+  # top-level directory, and no build state.
   fixture-hello-release =
-    let
-      release = hello.release "1.0.0";
-    in
-    runCommand "fixture-hello-release" { } ''
-      cd ${release}
-      sha256sum -c SHA256SUMS
-      tar -tzf hello_1.0.0_${pkgs'.stdenv.hostPlatform.system}.tar.gz | grep -qx hello
-      touch $out
-    '';
-
-  # A lockfile older than Package.resolved stops the build at evaluation.
-  stale-lock =
-    let
-      stale = runCommand "stale" { } ''
-        cp -r ${./fixtures/hello} $out
-        chmod -R u+w $out
-        echo >> $out/Package.resolved
+    runCommand "fixture-hello-release" { nativeBuildInputs = [ pkgs'.unzip ]; }
+      ''
+        test ${hello.packages.Greeting} = ${hello.release}
+        unzip -l ${hello.release} | grep -q ' hello/Package.swift$'
+        if unzip -l ${hello.release} | grep -qE ' hello/(\.build|Packages)/'; then exit 1; fi
+        touch $out
       '';
+
+  # `fetches` lists the entries the build fetches.
+  fixture-hello-fetches =
+    assert
+      map (entry: entry.path) hello.fetches == [
+        "Packages/swift-argument-parser"
+        "Packages/swift-collections"
+      ];
+    runCommand "fixture-hello-fetches" { } "touch $out";
+
+  # A lockfile older than the project stops the build at evaluation.
+  conformance-stale =
+    assert refuses (helloWith (rehash (helloLock // { manifestHash = "0"; })));
+    runCommand "conformance-stale" { } "touch $out";
+
+  # A lockfile whose hash of an entry was changed stops the build at
+  # evaluation, because it no longer matches its contentHash.
+  conformance-tampered =
+    let
+      first = builtins.head helloLock.artifacts;
     in
-    assert !(builtins.tryEval (buildSwiftPMProject { src = stale; }).project.drvPath).success;
-    runCommand "stale-lock" { } "touch $out";
+    assert refuses (
+      helloWith (
+        helloLock
+        // {
+          artifacts = [
+            (first // { hash = "sha256-" + lib.strings.replicate 43 "A" + "="; })
+          ]
+          ++ builtins.tail helloLock.artifacts;
+        }
+      )
+    );
+    runCommand "conformance-tampered" { } "touch $out";
 
   # A lockfile without the entry of a dependency its workspace state names
   # stops the build at evaluation.
-  missing-entry =
-    assert refuses (helloWithLock (lock: lock // { artifacts = builtins.tail lock.artifacts; }));
-    runCommand "missing-entry" { } "touch $out";
+  conformance-missing =
+    assert refuses (
+      helloWith (rehash (helloLock // { artifacts = builtins.tail helloLock.artifacts; }))
+    );
+    runCommand "conformance-missing" { } "touch $out";
 
   # A lockfile without one of its fields stops the build at evaluation.
-  missing-field =
-    assert refuses (helloWithLock (lock: builtins.removeAttrs lock [ "workspaceState" ]));
-    runCommand "missing-field" { } "touch $out";
+  conformance-malformed =
+    assert refuses (helloWith (rehash (builtins.removeAttrs helloLock [ "workspaceState" ])));
+    runCommand "conformance-malformed" { } "touch $out";
+
+  # A source that holds neither the purifier lockfile nor Package.resolved
+  # builds from both kept outside it.
+  conformance-external =
+    let
+      external = build {
+        src = helloSourceOnly;
+        lockFile = ./fixtures/hello/swiftpm-purifier.lock.json;
+        "Package.resolved" = ./fixtures/hello/Package.resolved;
+      };
+    in
+    prints "conformance-external" "${lib.getExe external.packages.hello} Nix" "Hello, Nix!";
 
   # The swiftpm-purifier command, with its unit tests run in the build,
   # and the toolchain around it.

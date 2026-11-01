@@ -23,7 +23,26 @@ import urllib.parse
 from pathlib import Path
 
 LOCK_NAME = "swiftpm-purifier.lock.json"
-LOCK_VERSION = 2
+LOCK_VERSION = 3
+# The lockfile `--lockfile` names, or for the `swift` verb
+# SWIFTPM_PURIFIER_LOCKFILE; without either, the lockfile in the package.
+LOCK_OVERRIDE = os.environ.get("SWIFTPM_PURIFIER_LOCKFILE")
+
+
+def lock_path(root: Path) -> Path:
+    return Path(LOCK_OVERRIDE).resolve() if LOCK_OVERRIDE else root / LOCK_NAME
+
+
+def content_hash(lock: dict) -> str:
+    """The hash of a lockfile without its contentHash, of the JSON that
+    builtins.toJSON writes for it: keys in order and no spaces."""
+    content = {key: value for key, value in lock.items() if key != "contentHash"}
+    text = json.dumps(
+        content, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    return sri_sha256(hashlib.sha256(text.encode()).digest())
+
+
 ROOT_PLACEHOLDER = "@root@"
 MANIFEST_PATTERN = re.compile(r"Package(@swift-[0-9.]+)?\.swift")
 # What the interactive mode keeps under .build: the Nix GC root of the
@@ -146,13 +165,15 @@ LOCK_KEYS = (
     "products",
     "workspaceState",
     "artifacts",
+    "contentHash",
 )
 
 
 def read_lock(root: Path):
     """The package's lockfile, or None when it has none. A lockfile that is
-    not valid JSON, or lacks a field, stops with the command that renews it."""
-    path = root / LOCK_NAME
+    not valid JSON, lacks a field, or was changed after the lock run wrote
+    it stops with the command that renews it."""
+    path = lock_path(root)
     if not path.exists():
         return None
     try:
@@ -174,6 +195,11 @@ def read_lock(root: Path):
         raise PurifierError(
             f"{path} has lock format version {lock['version']}, and this swiftpm-purifier reads "
             f"version {LOCK_VERSION}; run `swiftpm-purifier relock`"
+        )
+    if lock["contentHash"] != content_hash(lock):
+        raise PurifierError(
+            f"{path} does not match its contentHash, so it was changed after the lock run "
+            "wrote it; run `swiftpm-purifier relock` to write it again"
         )
     return lock
 
@@ -420,9 +446,13 @@ def relock(root: Path):
             ),
             "artifacts": sorted(artifacts, key=lambda a: a["path"]),
         }
-    (root / LOCK_NAME).write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
+    lock["contentHash"] = content_hash(lock)
+    path = lock_path(root)
+    path.write_text(
+        json.dumps(lock, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    )
     print(
-        f"swiftpm-purifier: wrote {LOCK_NAME} with {len(lock['artifacts'])} entries",
+        f"swiftpm-purifier: wrote {path} with {len(lock['artifacts'])} entries",
         file=sys.stderr,
     )
 
@@ -435,7 +465,7 @@ def lock_command(root: Path, force: bool):
         print(f"swiftpm-purifier: {error}", file=sys.stderr)
         lock = None
     if lock and not force and is_current(root, lock):
-        print(f"swiftpm-purifier: {LOCK_NAME} is up to date", file=sys.stderr)
+        print(f"swiftpm-purifier: {lock_path(root)} is up to date", file=sys.stderr)
         return
     relock(root)
 
@@ -467,7 +497,7 @@ def publish(root: Path, identity: str, version: str, registry):
     lock = read_lock(root)
     if lock is None or not is_current(root, lock):
         raise PurifierError(
-            f"{LOCK_NAME} is missing or out of date; run `swiftpm-purifier lock` first"
+            f"{lock_path(root)} is missing or out of date; run `swiftpm-purifier lock` first"
         )
     scope, dot, name = identity.partition(".")
     if not dot or not scope or not name:
@@ -482,8 +512,15 @@ def publish(root: Path, identity: str, version: str, registry):
                 f"no registry is configured for {identity}; pass --registry"
             )
     archive = nix_build(
-        '(pkgs.buildSwiftPMProject { src = /. + builtins.getEnv "SWIFTPM_PURIFIER_ROOT"; }).sourceArchive',
-        {"SWIFTPM_PURIFIER_ROOT": str(root)},
+        """(purifier.buildSwiftPMProject {
+          inherit pkgs;
+          src = /. + builtins.getEnv "SWIFTPM_PURIFIER_ROOT";
+          lockFile = /. + builtins.getEnv "SWIFTPM_PURIFIER_LOCK";
+        }).release""",
+        {
+            "SWIFTPM_PURIFIER_ROOT": str(root),
+            "SWIFTPM_PURIFIER_LOCK": str(lock_path(root)),
+        },
     )
     content_type, body = multipart(
         [
@@ -514,16 +551,18 @@ def publish(root: Path, identity: str, version: str, registry):
 
 
 def nix_build(attribute: str, env: dict, out_link=None) -> str:
-    """Builds `attribute` of the package set of swiftpm-purifier's own flake
-    (its nixpkgs with its overlay), so the interactive mode and publishing
-    use the builder and library a Nix build uses. `env` holds the values the
-    expression reads with builtins.getEnv."""
+    """Builds `attribute`, an expression over `purifier` (the library of
+    swiftpm-purifier's own flake, `lib.swiftpm-purifier`) and `pkgs` (its
+    nixpkgs with its overlay), so prefetch and publishing use the builder
+    and library a Nix build uses. `env` holds the values the expression
+    reads with builtins.getEnv."""
     flake = os.environ.get(
         "SWIFTPM_PURIFIER_FLAKE", str(Path(__file__).resolve().parent.parent.parent)
     )
     expression = f"""
       let
         flake = builtins.getFlake "path:{flake}";
+        purifier = flake.lib.swiftpm-purifier;
         pkgs = import flake.inputs.nixpkgs {{
           system = builtins.currentSystem;
           overlays = [ flake.overlays.default ];
@@ -563,22 +602,33 @@ def unlink(root: Path):
     shutil.rmtree(root / STATE_DIR, ignore_errors=True)
 
 
-def install(root: Path):
-    """Realizes the locked dependencies through Nix and links them into the
-    package, with the workspace state that marks them as edited."""
-    lock_file = root / LOCK_NAME
+def prefetch(root: Path):
+    """Realizes, through Nix, everything day-to-day development needs: the
+    locked dependencies and the toolchain with sourcekit-lsp, each kept by a
+    GC root under .build/swiftpm-purifier. It links the dependencies into
+    the package, with the workspace state that marks them as edited, so
+    `swift build`, `swift test`, `swift run` and the editor work offline."""
+    lock_file = lock_path(root)
     lock = read_lock(root)
     if lock is None:
         raise PurifierError(
             f"{root} has no {LOCK_NAME}; run `swiftpm-purifier lock` first"
         )
+    if not is_current(root, lock):
+        raise PurifierError(
+            f"{lock_file} is out of date with Package.swift or Package.resolved; "
+            "run `swiftpm-purifier lock`"
+        )
     unlink(root)
     (root / STATE_DIR).mkdir(parents=True, exist_ok=True)
     gc_root = root / STATE_DIR / "tree"
     nix_build(
-        'pkgs.buildSwiftPMTree (/. + builtins.getEnv "SWIFTPM_PURIFIER_LOCK")',
-        {"SWIFTPM_PURIFIER_LOCK": str(lock_file.resolve())},
+        'purifier.tree { inherit pkgs; lockFile = /. + builtins.getEnv "SWIFTPM_PURIFIER_LOCK"; }',
+        {"SWIFTPM_PURIFIER_LOCK": str(lock_file)},
         out_link=gc_root,
+    )
+    nix_build(
+        "pkgs.swiftpm-purifier.toolchain", {}, out_link=root / STATE_DIR / "toolchain"
     )
     tree = gc_root.resolve()
     links = []
@@ -623,17 +673,16 @@ def swift_command(arguments):
     except PurifierError:
         os.execvp(swift, [swift, *arguments])
     lock = read_lock(root)
-    if lock is None:
+    if lock is None or arguments[:1] in ([], ["--version"], ["--help"]):
         os.execvp(swift, [swift, *arguments])
-    if is_current(root, lock):
-        install(root)
-    else:
-        print(
-            f"swiftpm-purifier: {LOCK_NAME} is out of date with Package.swift or Package.resolved; "
-            "SwiftPM resolves the usual way until `swiftpm-purifier lock` renews it",
-            file=sys.stderr,
-        )
+    if not is_current(root, lock):
+        # SwiftPM would resolve and download what the lock does not hold.
         unlink(root)
+        raise PurifierError(
+            f"{lock_path(root)} is out of date with Package.swift or Package.resolved; "
+            "run `swiftpm-purifier lock`, which resolves and records the new dependencies"
+        )
+    prefetch(root)
     os.execvp(swift, [swift, *arguments])
 
 
@@ -655,15 +704,21 @@ def main(argv=None):
         type=Path,
         help="the package root (default: found from the current directory)",
     )
+    parser.add_argument(
+        "--lockfile",
+        type=Path,
+        help=f"the purifier lockfile (default: {LOCK_NAME} in the package root)",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser(
         "lock", help="lock the package, unless its lockfile is up to date"
     )
     commands.add_parser("relock", help="lock the package")
     commands.add_parser(
-        "install", help="link the locked dependencies into the package for SwiftPM"
+        "prefetch",
+        help="realize the locked dependencies and the toolchain, and link them into the package",
     )
-    commands.add_parser("uninstall", help="remove the links install made")
+    commands.add_parser("uninstall", help="remove the links prefetch made")
     publishing = commands.add_parser(
         "publish", help="publish the package's source archive to a registry"
     )
@@ -678,6 +733,9 @@ def main(argv=None):
     swift = commands.add_parser("swift", help="run swift on the locked dependencies")
     swift.add_argument("arguments", nargs=argparse.REMAINDER)
     options = parser.parse_args(argv)
+    global LOCK_OVERRIDE
+    if options.lockfile:
+        LOCK_OVERRIDE = str(options.lockfile.resolve())
 
     try:
         if options.command == "swift":
@@ -687,8 +745,8 @@ def main(argv=None):
             lock_command(root, force=False)
         elif options.command == "relock":
             lock_command(root, force=True)
-        elif options.command == "install":
-            install(root)
+        elif options.command == "prefetch":
+            prefetch(root)
         elif options.command == "uninstall":
             unlink(root)
         elif options.command == "publish":

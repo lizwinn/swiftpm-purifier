@@ -89,6 +89,16 @@ class ReadLock(unittest.TestCase):
         self.write(json.dumps(lock))
         self.assert_refused("lock format version")
 
+    def test_a_lockfile_changed_by_hand_is_refused(self):
+        lock = {key: [] for key in sp.LOCK_KEYS}
+        lock["version"] = sp.LOCK_VERSION
+        lock["contentHash"] = sp.content_hash(lock)
+        self.write(json.dumps(lock))
+        self.assertEqual(sp.read_lock(self.root)["version"], sp.LOCK_VERSION)
+        lock["artifacts"] = [{"path": "Packages/x"}]
+        self.write(json.dumps(lock))
+        self.assert_refused("contentHash")
+
     def test_lock_replaces_an_unreadable_lockfile(self):
         self.write("{ not json")
         with mock.patch.object(sp, "relock") as relock:

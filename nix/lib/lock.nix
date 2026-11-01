@@ -20,12 +20,22 @@ let
     "rootDirectory"
     "resolvedHash"
     "resolved"
+    "contentHash"
     "manifestHash"
     "products"
     "workspaceState"
     "artifacts"
   ];
   missingFields = builtins.filter (field: !(lock ? ${field})) fields;
+
+  # The lock run writes a hash of the lockfile without this field, of the
+  # JSON swiftpm-purifier and builtins.toJSON both write: keys in order, no
+  # spaces. A lockfile changed by hand no longer matches it.
+  contentHash = builtins.convertHash {
+    hash = builtins.hashString "sha256" (builtins.toJSON (builtins.removeAttrs lock [ "contentHash" ]));
+    hashAlgo = "sha256";
+    toHashFormat = "sri";
+  };
 
   # Every dependency the workspace state marks as edited lives at
   # Packages/<subpath>, and every remote binary target in the directory
@@ -70,6 +80,9 @@ assert
 assert
   missingFields == [ ]
   || throw "swiftpm-purifier: ${toString lockFile} lacks ${builtins.concatStringsSep ", " missingFields}. ${relock}";
+assert
+  lock.contentHash == contentHash
+  || throw "swiftpm-purifier: ${toString lockFile} does not match its contentHash, so it was changed after the lock run wrote it. ${relock}";
 assert
   missingEntries == [ ]
   || throw "swiftpm-purifier: ${toString lockFile} has no entry for ${builtins.concatStringsSep ", " missingEntries}, which its workspace state names. ${relock}";

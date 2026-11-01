@@ -23,6 +23,7 @@
       "path": "Packages/swift-numerics"
     }
   ],
+  "contentHash": "sha256-5VxwgdNsLjh7gZNkW71fBc/bESSATQkMrHyimVew0eY=",
   "manifestHash": "1cd4f3ca60847c044e9db6a868d4a0b7ede7be4a4261acf1673442385ff5b976",
   "package": "paths",
   "products": [
@@ -35,7 +36,7 @@
   "resolvedHash": "sha256-VrEAZqMY0KYZxfBVzLd7e+4gDW+4aMW/HRd+GNaCPpw=",
   "rootDirectory": "paths",
   "swiftVersion": "6.3.3",
-  "version": 2,
+  "version": 3,
   "workspaceState": {
     "object": {
       "artifacts": [],

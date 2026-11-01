@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: MIT
 #
 # Builds a SwiftPM package and its lockfile (written by `swiftpm-purifier
-# lock`) in the Nix sandbox.
+# lock`) in the Nix sandbox. The flake publishes it as
+# `lib.swiftpm-purifier.buildSwiftPMProject`:
 #
-#   buildSwiftPMProject { src = ./.; }
+#   buildSwiftPMProject { inherit pkgs; src = ./.; }
 #
 # returns
 #
@@ -12,51 +13,43 @@
 #   dynamic or static library's file under lib/ with its Swift modules,
 #   and, for an automatic library, a plugin or a macro, which SwiftPM
 #   publishes as source, the package's source archive;
+# - `tests`, the build with `swift test` run in the sandbox;
+# - `release`, the package's source archive, which a package registry
+#   serves and `swiftpm-purifier publish` uploads;
+# - `fetches`, the purifier library entries the build fetches;
 # - `project`, the build with every product installed;
-# - `sourceArchive`, the package's source as `swift package archive-source`
-#   makes it, which a package registry serves;
-# - `release <version>`, an archive per executable with SHA256SUMS;
 # - `tree`, the locked dependencies laid out for SwiftPM.
 #
-# Arguments: `src`, the package root; `lockFile`, which defaults to the
-# lockfile in `src`; `doCheck`, which runs `swift test`; `buildConfig`,
-# `release` or `debug`; `fetchurl` and `fetchgit`, which replace the
-# package set's fetchers, for credentials or mirrors; `artifactBuildInputs`,
-# the libraries the prebuilt files of binary targets need beyond the C and
-# C++ runtime; and any other argument of stdenv.mkDerivation, given to the
-# build.
+# Arguments: `pkgs`, the package set whose Swift toolchain builds; `src`,
+# the package root; `fetchers`, given unchanged to the purifier library's
+# fetchEntry (a `fetchurl` there carries credentials or a mirror);
+# `lockFile`, which defaults to the lockfile in `src` and may lie outside
+# it, for a project whose author does not commit one; `"Package.resolved"`,
+# SwiftPM's own lockfile when `src` has none or another; `buildConfig`,
+# `release` or `debug`; `artifactBuildInputs`, the libraries the prebuilt
+# files of binary targets need beyond the C and C++ runtime and the
+# libraries patch-artifact.nix offers; and any other argument of
+# stdenv.mkDerivation, given to the build.
+{ purifier }:
 {
-  lib,
   pkgs,
-  purifier,
-  stdenv,
-  swift,
-  swiftpm,
-  fetchurl,
-  fetchgit,
-  runCommand,
-  zip,
-  gnutar,
-  gzip,
-  callPackage,
-}@defaults:
-{
   src,
+  fetchers ? { },
   lockFile ? src + "/swiftpm-purifier.lock.json",
-  doCheck ? false,
   buildConfig ? "release",
-  fetchurl ? defaults.fetchurl,
-  fetchgit ? defaults.fetchgit,
   artifactBuildInputs ? [ ],
   ...
 }@args:
 let
+  inherit (pkgs) lib runCommand;
+  inherit (pkgs.swiftPackages) stdenv swift swiftpm;
+
   lock = import ./lock.nix { inherit lockFile; };
 
   tree = import ./tree.nix {
     inherit lock runCommand;
-    fetchEntry = purifier.fetchEntry { inherit pkgs fetchurl fetchgit; };
-    patchArtifact = callPackage ./patch-artifact.nix { buildInputs = artifactBuildInputs; };
+    fetchEntry = purifier.fetchEntry ({ inherit pkgs; } // fetchers);
+    patchArtifact = pkgs.callPackage ./patch-artifact.nix { buildInputs = artifactBuildInputs; };
   };
 
   # The lock is current when `Package.resolved` and the manifests hash to
@@ -82,10 +75,14 @@ let
       ]) manifests
     )
   );
-  # A source without Package.resolved, as from a repository that does not
-  # commit it, builds with the copy the lock carries.
-  hasResolved = builtins.pathExists (src + "/Package.resolved");
-  resolvedHash = if hasResolved then sha256 (src + "/Package.resolved") else lock.resolvedHash;
+  # SwiftPM's own lockfile is the `"Package.resolved"` argument when one is
+  # given, outside `src`, and replaces any copy in `src`; otherwise it is
+  # the copy in `src`. A source without one, as from a repository that does
+  # not commit it, builds with the copy the lock carries.
+  resolvedFile =
+    args."Package.resolved"
+      or (if builtins.pathExists (src + "/Package.resolved") then src + "/Package.resolved" else null);
+  resolvedHash = if resolvedFile != null then sha256 resolvedFile else lock.resolvedHash;
   current =
     (lock.resolvedHash == resolvedHash && lock.manifestHash == manifestHash)
     || throw "swiftpm-purifier: ${toString lockFile} is out of date with Package.swift or Package.resolved in ${toString src}. Run `swiftpm-purifier lock`.";
@@ -94,12 +91,18 @@ let
 
   # Links the tree into the package root and fills in the workspace state.
   linkTree =
-    lib.optionalString (!hasResolved && lock.resolved != null) ''
-      cp ${builtins.toFile "Package.resolved" lock.resolved} Package.resolved
-    ''
+    (
+      if resolvedFile != null then
+        ''
+          cp --no-preserve=mode ${resolvedFile} Package.resolved
+        ''
+      else
+        lib.optionalString (lock.resolved != null) ''
+          cp ${builtins.toFile "Package.resolved" lock.resolved} Package.resolved
+        ''
+    )
     + ''
-      for entry in $(cd ${tree} && find . -mindepth 1 \( -type l -o -name workspace-state.json.in \) -printf '%P\n'); do
-        if [ "$entry" = workspace-state.json.in ]; then continue; fi
+      for entry in $(cd ${tree} && find . -mindepth 1 -type l -printf '%P\n'); do
         mkdir -p "$(dirname "$entry")"
         ln -sfn "$(readlink ${tree}/$entry)" "$entry"
       done
@@ -108,13 +111,13 @@ let
     '';
 
   extraArgs = builtins.removeAttrs args [
+    "pkgs"
     "src"
+    "fetchers"
     "lockFile"
-    "doCheck"
     "buildConfig"
-    "fetchurl"
-    "fetchgit"
     "artifactBuildInputs"
+    "Package.resolved"
   ];
 
   project =
@@ -123,7 +126,7 @@ let
       {
         pname = name;
         version = "locked";
-        inherit src doCheck;
+        inherit src;
 
         nativeBuildInputs = [
           swift
@@ -184,15 +187,13 @@ let
       ]
     );
 
-  productsOf = type: builtins.filter (product: product.type == type) lock.products;
-  names = products: map (product: product.name) products;
-  staticLibraries = names (
+  staticLibraries = map (product: product.name) (
     builtins.filter (product: product.type == "library" && product.linkage == "static") lock.products
   );
 
-  sourceArchive =
+  release =
     assert current;
-    import ./source-archive.nix { inherit runCommand zip; } { inherit src name; };
+    import ./source-archive.nix { inherit (pkgs) runCommand zip; } { inherit src name; };
 
   packageOf =
     product:
@@ -212,7 +213,15 @@ let
         fi
       ''
     else
-      sourceArchive;
+      release;
+in
+{
+  inherit
+    lock
+    tree
+    project
+    release
+    ;
 
   packages = builtins.listToAttrs (
     map (product: {
@@ -221,32 +230,7 @@ let
     }) lock.products
   );
 
-  release =
-    version:
-    runCommand "${name}-release-${version}"
-      {
-        nativeBuildInputs = [
-          gnutar
-          gzip
-        ];
-      }
-      ''
-        mkdir -p $out
-        ${lib.concatMapStrings (executable: ''
-          tar -C ${project}/bin -czhf "$out/${executable}_${version}_${stdenv.hostPlatform.system}.tar.gz" \
-            --owner=0 --group=0 --mtime=@1 ${executable}
-        '') (names (productsOf "executable"))}
-        cd $out
-        sha256sum *.tar.gz > SHA256SUMS
-      '';
-in
-{
-  inherit
-    lock
-    tree
-    project
-    packages
-    sourceArchive
-    release
-    ;
+  tests = project.overrideAttrs { doCheck = true; };
+
+  fetches = lock.artifacts;
 }
