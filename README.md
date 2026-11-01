@@ -91,7 +91,11 @@ memory of the purifier contract: `{ purifier, entries, outputs, problems }`.
 A project whose author does not commit a purifier lockfile can be built by
 a flake that keeps the lockfile and passes it as `lockFile`. The file
 `Package.resolved` stays in `src`, because it is the lockfile of SwiftPM.
-A project without a `Package.resolved` cannot be built this way yet.
+SwiftPM has no way to name its own lockfile outside the package, so a
+project that does not commit `Package.resolved` cannot be built from
+outside its tree. For such a project, `swiftpm-purifier lock` writes the
+`Package.resolved` that SwiftPM resolves into the tree, and a fork or a
+patched source that commits it builds.
 
 ## Development loop
 
@@ -102,8 +106,9 @@ locked dependencies, which the shell links into `Packages/` and
 `.build/artifacts/` from the Nix store. Outside that shell, run
 `swiftpm-purifier swift build`.
 
-`swiftpm-purifier lock` records the downloads and keeps the pins of
-`Package.resolved` as they are. It relocks when `Package.swift` or the pins
+`swiftpm-purifier` is a standalone command that runs SwiftPM, not a SwiftPM
+package plugin. `swiftpm-purifier lock` records the downloads and keeps the
+pins of `Package.resolved` as they are. It relocks when `Package.swift` or the pins
 changed since the lockfile was made, and `relock` relocks regardless. A
 relock of an unchanged package reproduces the lockfile byte for byte.
 
@@ -178,11 +183,12 @@ dependency whose SwiftPM workspace state it cannot derive from
 so the build patches their ELF executables and libraries with
 `autoPatchelfHook` to run under Nix.
 
-x86_64-linux is the only supported system. nixpkgs marks its Swift 6.3
-compiler broken on aarch64-linux, where it fails to link with the gold
-linker, and aarch64-linux joins the flake's systems once nixpkgs updates to
-Swift 6.4, which links with LLD. On macOS, SwiftPM builds against the Xcode
-toolchain, which the Nix sandbox does not have.
+x86_64-linux is the only supported system, so the flake's checks and its CI
+run there and not on aarch64-linux. nixpkgs marks its Swift 6.3 compiler
+broken on aarch64-linux, where it fails to link with the gold linker, and
+aarch64-linux joins the flake's systems once nixpkgs updates to Swift 6.4,
+which links with LLD. On macOS, SwiftPM builds against the Xcode toolchain,
+which the Nix sandbox does not have.
 
 ## Examples
 
