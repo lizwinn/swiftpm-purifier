@@ -119,11 +119,10 @@ ignores `/Packages`.
 
 The toolchain includes sourcekit-lsp, and `prefetch` also writes the
 workspace state into `.build/index-build`, where sourcekit-lsp builds its
-background index. No check covers an editor. In the Nix build sandbox, the
-sourcekit-lsp 6.3.3 in nixpkgs reports that it cannot find the SourceKit
-plugin of its toolchain and cannot create a build server, so it resolves no
-symbols, with or without swiftpm-purifier. Editor support stays untested
-until that sourcekit-lsp works there.
+background index. Editor support does not work yet: the sourcekit-lsp 6.3.3
+in nixpkgs cannot find the SourceKit plugin of its toolchain and cannot
+create a build server, so it resolves no symbols, with or without
+swiftpm-purifier.
 
 ## Errors and fixes
 
@@ -162,55 +161,63 @@ dependency whose SwiftPM workspace state it cannot derive from
 so the build patches their ELF executables and libraries with
 `autoPatchelfHook` to run under Nix.
 
-x86_64-linux is the only system for now. nixpkgs marks its Swift 6.3
+x86_64-linux is the only supported system. nixpkgs marks its Swift 6.3
 compiler broken on aarch64-linux, where it fails to link with the gold
-linker. nixpkgs expects the Swift 6.4 update, which links with LLD, to fix
-it, and aarch64-linux joins the flake's systems then. On macOS, SwiftPM
-builds against the Xcode toolchain, which the Nix sandbox does not have.
+linker, and aarch64-linux joins the flake's systems once nixpkgs updates to
+Swift 6.4, which links with LLD. On macOS, SwiftPM builds against the Xcode
+toolchain, which the Nix sandbox does not have.
 
 ## Examples
 
-[vapor/toolbox](https://github.com/vapor/toolbox) at `20.0.2` is a real
-command-line project. It commits `Package.resolved` and no purifier
-lockfile, so its lockfile lives under `tests/projects/toolbox`, outside its
-source. CI relocks it, builds it in the Nix sandbox, and runs `vapor --help`.
+### vapor/toolbox
 
-The packages under `tests/fixtures` depend on real packages from GitHub, and
-CI locks and builds them:
+[vapor/toolbox](https://github.com/vapor/toolbox) is the command-line tool
+of the Vapor web framework. It commits `Package.resolved` and no purifier
+lockfile, so keep the lockfile in a small flake of your own and build the
+tool from there.
 
-- `hello` depends on
-  [swift-argument-parser](https://github.com/apple/swift-argument-parser)
-  and [swift-collections](https://github.com/apple/swift-collections), and
-  has a test target.
-- `paths` depends on a package by path, which depends on
-  [swift-algorithms](https://github.com/apple/swift-algorithms).
-- `macro` builds a macro against
-  [swift-syntax](https://github.com/swiftlang/swift-syntax).
-- `binary` runs the Linux executable of a
-  [SwiftLint](https://github.com/realm/SwiftLint) artifact bundle in a
-  prebuild command.
+Lock the tool at a release, writing the lockfile into your flake:
 
-[swift-format](https://github.com/swiftlang/swift-format) at `9f3ddd2`
-(swift-6.3.3-RELEASE) is a larger package that was locked and built by hand,
-without a CI job. It locks in 16 seconds, and it builds, runs and passes its
-configuration tests offline in the everyday loop. Its repository commits no
-`Package.resolved`, so a flake cannot build it externally yet.
+```zsh
+git clone --branch 20.0.2 https://github.com/vapor/toolbox
+cd toolbox
+nix run github:nix-purifiers/swiftpm-purifier -- --lockfile ../vapor-toolbox/swiftpm-purifier.lock.json lock
+```
 
-## Tests
+Build it with a flake next to that lockfile:
 
-`nix flake check` builds every fixture under `tests/fixtures` from its
-lockfile in the sandbox and runs it: dependencies from git, a dependency by
-path with dependencies of its own, a macro, and a binary target whose
-patched executable a prebuild command runs. The contract checks
-`conformance-stale`, `conformance-tampered`, `conformance-missing`,
-`conformance-malformed` and `conformance-external` run there too, with the
-unit tests of the command.
+```nix
+{
+  inputs.swiftpm-purifier.url = "github:nix-purifiers/swiftpm-purifier";
+  inputs.nixpkgs.follows = "swiftpm-purifier/nixpkgs";
+  inputs.toolbox = {
+    url = "github:vapor/toolbox/20.0.2";
+    flake = false;
+  };
 
-`tests/cli.sh` runs what needs the network or Nix itself, and its sections
-are the CI jobs `conformance-relock`, `conformance-rebuild`,
-`conformance-offline` and `conformance-update`, together with the
-interactive mode, the tampered-hash build and a registry dependency
-against a stand-in registry, which also receives a published archive.
+  outputs = { nixpkgs, swiftpm-purifier, toolbox, ... }:
+    let
+      system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+      project = swiftpm-purifier.lib.swiftpm-purifier.buildSwiftPMProject {
+        inherit pkgs;
+        src = toolbox;
+        lockFile = ./swiftpm-purifier.lock.json;
+      };
+    in
+    {
+      packages.${system}.default = project.packages.vapor;
+    };
+}
+```
+
+```zsh
+nix run
+```
+
+To move to a newer release, change the tag in the flake input, and run
+`swiftpm-purifier update` in a checkout of that release with the same
+`--lockfile`.
 
 ## Credits
 
