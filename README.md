@@ -23,38 +23,52 @@ the project:
 nix run github:nix-purifiers/swiftpm-purifier -- lock
 ```
 
+Then build the project from its directory, with no Nix file added to it.
+Replace `hello` with a product of the package:
+
+```zsh
+nix build --impure --expr '
+  let
+    purifier = builtins.getFlake "github:nix-purifiers/swiftpm-purifier";
+    pkgs = import purifier.inputs.nixpkgs {
+      system = builtins.currentSystem;
+      overlays = [ purifier.overlays.default ];
+    };
+  in
+  (pkgs.swiftpm-purifier.buildSwiftPMProject { src = ./.; }).packages.hello'
+```
+
 The flake adds one attribute to the package set: the scope
 `pkgs.swiftpm-purifier`, which holds the builder `buildSwiftPMProject`, the
-`swiftpm-purifier` command as `cli`, and the Swift `toolchain`. A package
-written for `callPackage` takes the scope by name:
+`swiftpm-purifier` command as `cli`, and the Swift `toolchain`.
 
-```nix
-# package.nix
-{ swiftpm-purifier }:
-(swiftpm-purifier.buildSwiftPMProject { src = ./.; }).packages.hello
-```
+A project whose authors want a flake can package the project with one. The
+flake can live in the repository of the project or in another one, and it
+calls the builder directly:
 
 ```nix
 {
   inputs.swiftpm-purifier.url = "github:nix-purifiers/swiftpm-purifier";
   inputs.nixpkgs.follows = "swiftpm-purifier/nixpkgs";
 
-  outputs = { nixpkgs, swiftpm-purifier, ... }:
+  outputs = { self, nixpkgs, swiftpm-purifier, ... }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs {
         inherit system;
-        overlays = [
-          swiftpm-purifier.overlays.default
-          (final: prev: { hello = final.callPackage ./package.nix { }; })
-        ];
+        overlays = [ swiftpm-purifier.overlays.default ];
       };
+      project = pkgs.swiftpm-purifier.buildSwiftPMProject { src = self; };
     in
     {
-      packages.${system}.default = pkgs.hello;
+      packages.${system}.default = project.packages.hello;
+      checks.${system}.tests = project.tests;
     };
 }
 ```
+
+A package in an overlay that takes the scope as `{ swiftpm-purifier }:` calls
+`swiftpm-purifier.buildSwiftPMProject` the same way.
 
 `buildSwiftPMProject` takes these arguments:
 
@@ -211,18 +225,33 @@ which the Nix sandbox does not have.
 
 [vapor/toolbox](https://github.com/vapor/toolbox) is the command-line tool
 of the Vapor web framework. It commits `Package.resolved` and no purifier
-lockfile, so keep the lockfile in a small flake of your own and build the
-tool from there.
+lockfile.
 
-Lock the tool at a release, writing the lockfile into your flake:
+Lock the tool at a release, and build it from the clone:
 
 ```zsh
 git clone --branch 20.0.2 https://github.com/vapor/toolbox
 cd toolbox
-nix run github:nix-purifiers/swiftpm-purifier -- --lockfile ../vapor-toolbox/swiftpm-purifier.lock.json lock
+nix run github:nix-purifiers/swiftpm-purifier -- lock
+nix build --impure --expr '
+  let
+    purifier = builtins.getFlake "github:nix-purifiers/swiftpm-purifier";
+    pkgs = import purifier.inputs.nixpkgs {
+      system = builtins.currentSystem;
+      overlays = [ purifier.overlays.default ];
+    };
+  in
+  (pkgs.swiftpm-purifier.buildSwiftPMProject { src = ./.; }).packages.vapor'
+./result/bin/vapor --help
 ```
 
-Build it with a flake next to that lockfile:
+To keep the purifier lockfile outside the clone, write it into a flake of
+your own with `--lockfile`, and let that flake build the tool from its
+source:
+
+```zsh
+nix run github:nix-purifiers/swiftpm-purifier -- --lockfile ../vapor-toolbox/swiftpm-purifier.lock.json lock
+```
 
 ```nix
 {
@@ -249,10 +278,6 @@ Build it with a flake next to that lockfile:
       packages.${system}.default = project.packages.vapor;
     };
 }
-```
-
-```zsh
-nix run
 ```
 
 To move to a newer release, change the tag in the flake input, and run
