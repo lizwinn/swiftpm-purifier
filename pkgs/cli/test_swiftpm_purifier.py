@@ -184,6 +184,11 @@ class LockPin(unittest.TestCase):
             locked, {"name": "cmark-gfm", "revision": "a" * 40, "hash": "sha256-x"}
         )
 
+    def test_a_checkout_keeps_the_case_of_the_url(self):
+        url = "https://github.com/jpsim/Yams.git"
+        self.assertEqual(sp.subpath_of(pin("yams", url)), "Yams")
+        self.assertEqual(sp.subpath_of(pin("x", "https://example/x/")), "x")
+
     def test_the_derived_record_is_swiftpms_record_marked_as_edited(self):
         url = "https://example/x.git"
         record = sp.record_of(pin("x", url), "x")

@@ -85,6 +85,14 @@ relock() {
     diff -u "$tests/fixtures/$name/swiftpm-purifier.lock.json" "$work/relock/$name/swiftpm-purifier.lock.json" \
       || fail "relocking $name changed its lockfile"
   done
+
+  echo "== relocking vapor/toolbox against its lockfile kept outside it"
+  git clone --quiet https://github.com/vapor/toolbox.git "$work/relock/toolbox"
+  git -C "$work/relock/toolbox" checkout --quiet 9046ddadc17ac8400e1923a2db3bdca054172874
+  (cd "$work/relock/toolbox" && "$bin/swiftpm-purifier" --lockfile "$work/relock/toolbox.lock.json" relock)
+  diff -u "$tests/projects/toolbox/swiftpm-purifier.lock.json" "$work/relock/toolbox.lock.json" \
+    || fail "relocking vapor/toolbox changed its lockfile"
+  git -C "$work/relock/toolbox" diff --quiet Package.resolved || fail "relocking vapor/toolbox changed Package.resolved"
 }
 
 interactive() {

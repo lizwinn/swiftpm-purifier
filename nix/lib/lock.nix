@@ -128,9 +128,11 @@ let
   problems = if problem == null then [ ] else [ problem ];
   usable = problems == [ ];
 
-  # SwiftPM keeps a source control checkout under its identity, and a
-  # registry download under scope/name/version. The lock run checks that
-  # the workspace state SwiftPM wrote uses these paths.
+  # SwiftPM keeps a source control checkout under the last component of the
+  # URL without its `.git` suffix, which keeps the case of the URL where
+  # the identity is lowercase, and a registry download under
+  # scope/name/version. The lock run checks that the workspace state
+  # SwiftPM wrote uses these paths.
   subpathOf =
     pin:
     if isRegistry pin then
@@ -139,7 +141,11 @@ let
       in
       "${builtins.elemAt parts 0}/${builtins.elemAt parts 1}/${pin.state.version}"
     else
-      pin.identity;
+      let
+        base = builtins.elemAt (builtins.match ".*/([^/]+)/*" pin.location) 0;
+        unsuffixed = builtins.match "(.*)\\.git" base;
+      in
+      if unsuffixed == null then base else builtins.head unsuffixed;
 
   packageRefOf = pin: {
     inherit (pin) identity kind;

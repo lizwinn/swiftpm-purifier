@@ -289,12 +289,13 @@ def prefetch_file(url: str) -> str:
 
 def subpath_of(pin: dict) -> str:
     """Where SwiftPM keeps a pinned dependency, as lock.nix derives it: a
-    checkout under its identity, a registry download under
-    scope/name/version."""
+    checkout under the last component of the URL without its `.git`
+    suffix, a registry download under scope/name/version."""
     if pin["kind"] == "registry":
         scope, _, name = pin["identity"].partition(".")
         return f"{scope}/{name}/{pin['state']['version']}"
-    return pin["identity"]
+    base = pin["location"].rstrip("/").rsplit("/", 1)[-1]
+    return base.removesuffix(".git")
 
 
 def record_of(pin: dict, name: str) -> dict:

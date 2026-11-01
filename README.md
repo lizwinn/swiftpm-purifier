@@ -170,6 +170,11 @@ builds against the Xcode toolchain, which the Nix sandbox does not have.
 
 ## Examples
 
+[vapor/toolbox](https://github.com/vapor/toolbox) at `20.0.2` is a real
+command-line project. It commits `Package.resolved` and no purifier
+lockfile, so its lockfile lives under `tests/projects/toolbox`, outside its
+source. CI relocks it, builds it in the Nix sandbox, and runs `vapor --help`.
+
 The packages under `tests/fixtures` depend on real packages from GitHub, and
 CI locks and builds them:
 

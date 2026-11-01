@@ -1,0 +1,73 @@
+{
+  "binaryTargets": [],
+  "contentHash": "sha256-A+3n7iJpufPbgZzy0MEICfA7OTN/mob+ks1cwtMSU8M=",
+  "localDependencies": [],
+  "manifestHash": "8ad607752f5a43d0fa98a2434ca826462e554443c9c077d90363e88f7943d5ac",
+  "package": "toolbox",
+  "pins": {
+    "console-kit": {
+      "hash": "sha256-XF3PD740YSwKPSL8PGu/tHfjJH4WyWPYfyzj9zW+BbE=",
+      "name": "console-kit",
+      "revision": "ebd3ee6f857eb78ed2ab34a23ec72ff81d3fd9a4"
+    },
+    "swift-argument-parser": {
+      "hash": "sha256-BWm2ZbNIvlamNp8cxoicFlAcujjhH22VPzs67lEIXWU=",
+      "name": "swift-argument-parser",
+      "revision": "6a52f3251125d74daf04fcbd5e6f08a75d074382"
+    },
+    "swift-async-algorithms": {
+      "hash": "sha256-gL7bK76pCu09QedafbSM3plq3vJ9WMq2TeonMUYoPU0=",
+      "name": "swift-async-algorithms",
+      "revision": "3da39bbc4e687d4192af7c9cf4eab805745a0b9c"
+    },
+    "swift-collections": {
+      "hash": "sha256-oLYfOxB4CGH5tTkNOi0IX3iHTO64YBoaFyu+/1I5HNE=",
+      "name": "swift-collections",
+      "revision": "a0cb0954ecb21e4e31b0070e6ed5674e8556685a"
+    },
+    "swift-configuration": {
+      "hash": "sha256-2ucU1u8JMhmZprKrmJLiP0aLf9epphImyeqn6gpNLWo=",
+      "name": "swift-configuration",
+      "revision": "be76c4ad929eb6c4bcaf3351799f2adf9e6848a9"
+    },
+    "swift-log": {
+      "hash": "sha256-ojPYtGPHRFktXqlRhJoBR7bqWgBNwN+h1BE+iUEaw1Q=",
+      "name": "swift-log",
+      "revision": "a878e7f8f46cfc0e1125e565b5c08e7d5272dc9a"
+    },
+    "swift-mustache": {
+      "hash": "sha256-4BFDI11yuG56Lg1fQuv/zgjW5oJDk6xYOa3gUrkULWk=",
+      "name": "swift-mustache",
+      "revision": "0b91b3127baee1d97c45a7390a49779256b4295d"
+    },
+    "swift-service-lifecycle": {
+      "hash": "sha256-IJZsyoNbRksSC3CUoBRGs0mn0h0FW6y73saEeUpaOcc=",
+      "name": "swift-service-lifecycle",
+      "revision": "9829955b385e5bb88128b73f1b8389e9b9c3191a"
+    },
+    "swift-subprocess": {
+      "hash": "sha256-aDyiIUSKvhdiA1M1IcWhHYbTSvzie4y+dhSGBTVwHLk=",
+      "name": "swift-subprocess",
+      "revision": "40243d063b41485e17501ccb9d434006bdf837a5"
+    },
+    "swift-system": {
+      "hash": "sha256-fkPD9lz+XnMRu2Nr62Z+xaPXfK3EYaWaTjO2ZdMPuN8=",
+      "name": "swift-system",
+      "revision": "61e4ca4b81b9e09e2ec863b00c340eb13497dac6"
+    },
+    "yams": {
+      "hash": "sha256-iOZsaPM4tn8/d8YBEvEJSGecwVkEXeON21SnkuysWrY=",
+      "name": "Yams",
+      "revision": "a27b21e0c81c5bf42049b897a62aaf387e80f279"
+    }
+  },
+  "products": [
+    {
+      "name": "vapor",
+      "type": "executable"
+    }
+  ],
+  "rootDirectory": "toolbox",
+  "version": 4,
+  "workspaceStateVersion": 7
+}

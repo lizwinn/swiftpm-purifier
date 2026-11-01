@@ -31,6 +31,21 @@ let
   # prebuild command runs before each build.
   binary = build { src = ./fixtures/binary; };
 
+  # vapor/toolbox at 20.0.2, a real-world project. Its repository commits
+  # Package.resolved and no purifier lockfile, so the lockfile lies outside
+  # its source. The source is fetched at evaluation, so the builder reads its
+  # manifests and pins without import-from-derivation.
+  toolbox = build {
+    src = builtins.fetchTree {
+      type = "github";
+      owner = "vapor";
+      repo = "toolbox";
+      rev = "9046ddadc17ac8400e1923a2db3bdca054172874";
+      narHash = "sha256-iChpUR0aH0Rq4bQtd09O1O/eMgrXw4FlaHGZv58TP5k=";
+    };
+    lockFile = ./projects/toolbox/swiftpm-purifier.lock.json;
+  };
+
   # Runs a command and compares what it prints.
   prints =
     name: command: expected:
@@ -108,6 +123,13 @@ in
         if pkgs'.stdenv.hostPlatform.isAarch64 then "arm64" else "amd64"
       }/swiftlint version"
       "0.65.1";
+
+  # The executable of vapor/toolbox runs.
+  project-toolbox = runCommand "project-toolbox" { nativeBuildInputs = [ pkgs'.git ]; } ''
+    ${lib.getExe toolbox.packages.vapor} --help > help
+    grep -q 'OVERVIEW' help
+    touch $out
+  '';
 
   # The release of the hello fixture is its source archive, which is also
   # the package of its automatic library product: the manifest under one
