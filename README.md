@@ -38,6 +38,13 @@ nix build --impure --expr '
   (pkgs.swiftpm-purifier.buildSwiftPMProject { src = ./.; }).packages.hello'
 ```
 
+This uses the purifier's pinned nixpkgs, matching the lock command above.
+To build with ambient `<nixpkgs>` from your Nix search path instead,
+replace `import purifier.inputs.nixpkgs` with `import <nixpkgs>`.
+Both forms need no Nix files in your project. The build tool and language
+versions must match the lockfile; with ambient nixpkgs, lock with the
+purifier from that package set or pass a compatible toolchain to the builder.
+
 The flake adds one attribute to the package set: the scope
 `pkgs.swiftpm-purifier`, which holds the builder `buildSwiftPMProject`, the
 `swiftpm-purifier` command as `cli`, and the Swift `toolchain`.
