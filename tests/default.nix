@@ -50,10 +50,26 @@ let
         resolvedHash = null;
         manifestHash = "";
         products = [ ];
-        workspaceState = { };
+        workspaceState.object = {
+          dependencies = [ ];
+          artifacts = [ ];
+        };
         artifacts = [ ];
       }
     );
+
+  # The hello fixture with its lockfile changed by `change`.
+  helloWithLock =
+    change:
+    buildSwiftPMProject {
+      src = ./fixtures/hello;
+      lockFile = builtins.toFile "swiftpm-purifier.lock.json" (
+        builtins.toJSON (
+          change (builtins.fromJSON (builtins.readFile ./fixtures/hello/swiftpm-purifier.lock.json))
+        )
+      );
+    };
+  refuses = project: !(builtins.tryEval project.project.drvPath).success;
   readsVersion =
     version:
     (builtins.tryEval (import ../nix/lib/lock.nix { lockFile = lockWithVersion version; }).package)
@@ -112,6 +128,17 @@ in
     in
     assert !(builtins.tryEval (buildSwiftPMProject { src = stale; }).project.drvPath).success;
     runCommand "stale-lock" { } "touch $out";
+
+  # A lockfile without the entry of a dependency its workspace state names
+  # stops the build at evaluation.
+  missing-entry =
+    assert refuses (helloWithLock (lock: lock // { artifacts = builtins.tail lock.artifacts; }));
+    runCommand "missing-entry" { } "touch $out";
+
+  # A lockfile without one of its fields stops the build at evaluation.
+  missing-field =
+    assert refuses (helloWithLock (lock: builtins.removeAttrs lock [ "workspaceState" ]));
+    runCommand "missing-field" { } "touch $out";
 
   # The swiftpm-purifier command, with its unit tests run in the build,
   # and the toolchain around it.

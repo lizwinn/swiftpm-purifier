@@ -132,6 +132,47 @@ def read_json(path: Path):
     return json.loads(path.read_text()) if path.exists() else None
 
 
+LOCK_KEYS = (
+    "version",
+    "package",
+    "rootDirectory",
+    "resolvedHash",
+    "manifestHash",
+    "products",
+    "workspaceState",
+    "artifacts",
+)
+
+
+def read_lock(root: Path):
+    """The package's lockfile, or None when it has none. A lockfile that is
+    not valid JSON, or lacks a field, stops with the command that renews it."""
+    path = root / LOCK_NAME
+    if not path.exists():
+        return None
+    try:
+        lock = json.loads(path.read_text())
+    except json.JSONDecodeError as error:
+        raise PurifierError(
+            f"{path} is not valid JSON ({error}); run `swiftpm-purifier relock` to write it again"
+        )
+    missing = (
+        [key for key in LOCK_KEYS if key not in lock]
+        if isinstance(lock, dict)
+        else list(LOCK_KEYS)
+    )
+    if missing:
+        raise PurifierError(
+            f"{path} lacks {', '.join(missing)}; run `swiftpm-purifier relock` to write it again"
+        )
+    if lock["version"] != LOCK_VERSION:
+        raise PurifierError(
+            f"{path} has lock format version {lock['version']}, and this swiftpm-purifier reads "
+            f"version {LOCK_VERSION}; run `swiftpm-purifier relock`"
+        )
+    return lock
+
+
 def mirrors(package: Path, config: Path) -> dict:
     """SwiftPM's mirrors, original URL to mirror URL. The package
     configuration wins over the user configuration, as in SwiftPM."""
@@ -377,7 +418,12 @@ def relock(root: Path):
 
 
 def lock_command(root: Path, force: bool):
-    lock = read_json(root / LOCK_NAME)
+    try:
+        lock = read_lock(root)
+    except PurifierError as error:
+        # A lockfile that cannot be read is replaced.
+        print(f"swiftpm-purifier: {error}", file=sys.stderr)
+        lock = None
     if lock and not force and is_current(root, lock):
         print(f"swiftpm-purifier: {LOCK_NAME} is up to date", file=sys.stderr)
         return
@@ -408,7 +454,7 @@ def publish(root: Path, identity: str, version: str, registry):
     SwiftPM."""
     import urllib.request
 
-    lock = read_json(root / LOCK_NAME)
+    lock = read_lock(root)
     if lock is None or not is_current(root, lock):
         raise PurifierError(
             f"{LOCK_NAME} is missing or out of date; run `swiftpm-purifier lock` first"
@@ -500,7 +546,11 @@ def install(root: Path):
     """Realizes the locked dependencies through Nix and links them into the
     package, with the workspace state that marks them as edited."""
     lock_file = root / LOCK_NAME
-    lock = json.loads(lock_file.read_text())
+    lock = read_lock(root)
+    if lock is None:
+        raise PurifierError(
+            f"{root} has no {LOCK_NAME}; run `swiftpm-purifier lock` first"
+        )
     unlink(root)
     (root / STATE_DIR).mkdir(parents=True, exist_ok=True)
     gc_root = root / STATE_DIR / "tree"
@@ -559,7 +609,7 @@ def swift_command(arguments):
         root = find_root(Path.cwd())
     except PurifierError:
         os.execvp(swift, [swift, *arguments])
-    lock = read_json(root / LOCK_NAME)
+    lock = read_lock(root)
     if lock is None:
         os.execvp(swift, [swift, *arguments])
     if is_current(root, lock):

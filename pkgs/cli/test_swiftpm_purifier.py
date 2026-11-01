@@ -51,6 +51,51 @@ class ManifestHash(unittest.TestCase):
             self.assertTrue(sp.resolved_hash(root).startswith("sha256-"))
 
 
+class ReadLock(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def write(self, text):
+        (self.root / sp.LOCK_NAME).write_text(text)
+
+    def assert_refused(self, *phrases):
+        with self.assertRaises(sp.PurifierError) as caught:
+            sp.read_lock(self.root)
+        message = str(caught.exception)
+        self.assertIn("swiftpm-purifier relock", message)
+        for phrase in phrases:
+            self.assertIn(phrase, message)
+
+    def test_no_lockfile_is_none(self):
+        self.assertIsNone(sp.read_lock(self.root))
+
+    def test_invalid_json_names_the_relock(self):
+        self.write("{ not json")
+        self.assert_refused("not valid JSON")
+
+    def test_a_missing_field_is_named(self):
+        lock = {key: None for key in sp.LOCK_KEYS if key != "artifacts"}
+        lock["version"] = sp.LOCK_VERSION
+        self.write(json.dumps(lock))
+        self.assert_refused("lacks artifacts")
+
+    def test_another_format_version_is_refused(self):
+        lock = {key: None for key in sp.LOCK_KEYS}
+        lock["version"] = sp.LOCK_VERSION + 1
+        self.write(json.dumps(lock))
+        self.assert_refused("lock format version")
+
+    def test_lock_replaces_an_unreadable_lockfile(self):
+        self.write("{ not json")
+        with mock.patch.object(sp, "relock") as relock:
+            sp.lock_command(self.root, force=False)
+        relock.assert_called_once_with(self.root)
+
+
 class Template(unittest.TestCase):
     def test_replaces_the_package_directory(self):
         package = Path("/tmp/work/package")
