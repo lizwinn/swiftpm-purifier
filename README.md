@@ -269,9 +269,10 @@ lockfile.
 Lock the tool at a release, and build it from the clone:
 
 ```zsh
+nix shell 'github:nix-purifiers/swiftpm-purifier#toolchain'
 git clone --branch 20.0.2 https://github.com/vapor/toolbox
 cd toolbox
-nix run github:nix-purifiers/swiftpm-purifier -- lock
+swiftpm-purifier lock
 nix build --impure --expr 'let
   purifier = builtins.getFlake "github:nix-purifiers/swiftpm-purifier";
   pkgs = import purifier.inputs.nixpkgs {
@@ -289,7 +290,8 @@ your own with `--lockfile`, and let that flake build the tool from its
 source:
 
 ```zsh
-nix run github:nix-purifiers/swiftpm-purifier -- --lockfile \
+nix shell 'github:nix-purifiers/swiftpm-purifier#toolchain'
+swiftpm-purifier --lockfile \
   ../vapor-toolbox/swiftpm-purifier.lock.json lock
 ```
 
