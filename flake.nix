@@ -10,7 +10,6 @@
     # take nixpkgs.
     nixpkgs-lib.url = "github:nix-community/nixpkgs.lib";
     flake-parts.url = "github:hercules-ci/flake-parts";
-    flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs-lib";
     # The shared library of the nix-purifiers, which fetches the locked
     # entries.
     purifier.url = "github:nix-purifiers/purifier";
