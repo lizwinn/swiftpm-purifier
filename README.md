@@ -80,7 +80,8 @@ calls the builder directly:
 
 ```nix
 {
-  inputs.swiftpm-purifier.url = "github:nix-purifiers/swiftpm-purifier";
+  inputs.swiftpm-purifier.url =
+    "github:nix-purifiers/swiftpm-purifier";
   inputs.nixpkgs.follows = "swiftpm-purifier/nixpkgs";
 
   outputs =
@@ -94,14 +95,18 @@ calls the builder directly:
       system = "x86_64-linux";
       pkgs = import nixpkgs {
         inherit system;
-        overlays = [ swiftpm-purifier.overlays.default ];
+        overlays = [
+          swiftpm-purifier.overlays.default
+        ];
       };
-      project = pkgs.swiftpm-purifier.buildSwiftPMProject {
+      project =
+        pkgs.swiftpm-purifier.buildSwiftPMProject {
         src = self;
       };
     in
     {
-      packages.${system}.default = project.packages.hello;
+      packages.${system}.default =
+        project.packages.hello;
       checks.${system}.tests = project.tests;
     };
 }
@@ -297,7 +302,8 @@ swiftpm-purifier --lockfile \
 
 ```nix
 {
-  inputs.swiftpm-purifier.url = "github:nix-purifiers/swiftpm-purifier";
+  inputs.swiftpm-purifier.url =
+    "github:nix-purifiers/swiftpm-purifier";
   inputs.nixpkgs.follows = "swiftpm-purifier/nixpkgs";
   inputs.toolbox = {
     url = "github:vapor/toolbox/20.0.2";
@@ -315,15 +321,19 @@ swiftpm-purifier --lockfile \
       system = "x86_64-linux";
       pkgs = import nixpkgs {
         inherit system;
-        overlays = [ swiftpm-purifier.overlays.default ];
+        overlays = [
+          swiftpm-purifier.overlays.default
+        ];
       };
-      project = pkgs.swiftpm-purifier.buildSwiftPMProject {
+      project =
+        pkgs.swiftpm-purifier.buildSwiftPMProject {
         src = toolbox;
         lockFile = ./swiftpm-purifier.lock.json;
       };
     in
     {
-      packages.${system}.default = project.packages.vapor;
+      packages.${system}.default =
+        project.packages.vapor;
     };
 }
 ```
