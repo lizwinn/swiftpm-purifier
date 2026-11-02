@@ -334,10 +334,8 @@ To move to a newer release, change the tag in the flake input, and run
 
 ## Credits
 
-swiftpm-purifier follows the design of
-[sbt-purifier](https://github.com/nix-purifiers/sbt-purifier). The purifier
-idea came from the [cargo (libnix)](https://github.com/nixcloud/cargo)
-project by nixcloud.
+The purifier idea was inspired by nixcloud's
+[cargo (libnix)](https://github.com/nixcloud/cargo).
 
 ## License
 
