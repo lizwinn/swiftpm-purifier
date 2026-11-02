@@ -10,7 +10,8 @@ optional next step.
 Install the integration into your Nix profile once:
 
 ```sh
-nix profile install 'github:nix-purifiers/swiftpm-purifier#toolchain'
+nix profile install \
+  'github:nix-purifiers/swiftpm-purifier#toolchain'
 ```
 
 This installs the `swift` wrapper. Use it for the locked
@@ -94,14 +95,22 @@ calls the builder directly:
   inputs.swiftpm-purifier.url = "github:nix-purifiers/swiftpm-purifier";
   inputs.nixpkgs.follows = "swiftpm-purifier/nixpkgs";
 
-  outputs = { self, nixpkgs, swiftpm-purifier, ... }:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      swiftpm-purifier,
+      ...
+    }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs {
         inherit system;
         overlays = [ swiftpm-purifier.overlays.default ];
       };
-      project = pkgs.swiftpm-purifier.buildSwiftPMProject { src = self; };
+      project = pkgs.swiftpm-purifier.buildSwiftPMProject {
+        src = self;
+      };
     in
     {
       packages.${system}.default = project.packages.hello;
@@ -174,15 +183,15 @@ For an ad hoc build, the builder can also be evaluated directly from the
 project root. Replace the example package name with one from your project:
 
 ```zsh
-nix build --impure --expr '
-  let
-    purifier = builtins.getFlake "github:nix-purifiers/swiftpm-purifier";
-    pkgs = import purifier.inputs.nixpkgs {
-      system = builtins.currentSystem;
-      overlays = [ purifier.overlays.default ];
-    };
-  in
-  (pkgs.swiftpm-purifier.buildSwiftPMProject { src = ./.; }).packages.hello'
+nix build --impure --expr 'let
+  purifier = builtins.getFlake "github:nix-purifiers/swiftpm-purifier";
+  pkgs = import purifier.inputs.nixpkgs {
+    system = builtins.currentSystem;
+    overlays = [ purifier.overlays.default ];
+  };
+in
+(pkgs.swiftpm-purifier.buildSwiftPMProject { src = ./.; })
+.packages.hello'
 ```
 
 This uses the purifier's pinned nixpkgs, matching the lock command above.
@@ -275,15 +284,15 @@ Lock the tool at a release, and build it from the clone:
 git clone --branch 20.0.2 https://github.com/vapor/toolbox
 cd toolbox
 nix run github:nix-purifiers/swiftpm-purifier -- lock
-nix build --impure --expr '
-  let
-    purifier = builtins.getFlake "github:nix-purifiers/swiftpm-purifier";
-    pkgs = import purifier.inputs.nixpkgs {
-      system = builtins.currentSystem;
-      overlays = [ purifier.overlays.default ];
-    };
-  in
-  (pkgs.swiftpm-purifier.buildSwiftPMProject { src = ./.; }).packages.vapor'
+nix build --impure --expr 'let
+  purifier = builtins.getFlake "github:nix-purifiers/swiftpm-purifier";
+  pkgs = import purifier.inputs.nixpkgs {
+    system = builtins.currentSystem;
+    overlays = [ purifier.overlays.default ];
+  };
+in
+(pkgs.swiftpm-purifier.buildSwiftPMProject { src = ./.; })
+.packages.vapor'
 ./result/bin/vapor --help
 ```
 
@@ -292,7 +301,8 @@ your own with `--lockfile`, and let that flake build the tool from its
 source:
 
 ```zsh
-nix run github:nix-purifiers/swiftpm-purifier -- --lockfile ../vapor-toolbox/swiftpm-purifier.lock.json lock
+nix run github:nix-purifiers/swiftpm-purifier -- --lockfile \
+  ../vapor-toolbox/swiftpm-purifier.lock.json lock
 ```
 
 ```nix
@@ -304,7 +314,13 @@ nix run github:nix-purifiers/swiftpm-purifier -- --lockfile ../vapor-toolbox/swi
     flake = false;
   };
 
-  outputs = { nixpkgs, swiftpm-purifier, toolbox, ... }:
+  outputs =
+    {
+      nixpkgs,
+      swiftpm-purifier,
+      toolbox,
+      ...
+    }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs {
