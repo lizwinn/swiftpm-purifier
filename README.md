@@ -5,12 +5,6 @@ Nix-resolved dependencies. Use the normal build and test commands in your
 working tree; building the project itself in the Nix sandbox is an
 optional next step.
 
-It follows the [purifier contract](https://github.com/nix-purifiers/purifier/blob/main/CONTRACT.md).
-
-swiftpm-purifier meets the
-[purifier contract](https://github.com/nix-purifiers/purifier/blob/main/CONTRACT.md)
-that every nix-purifier shares.
-
 ## Installation
 
 Install the integration into your Nix profile once:
