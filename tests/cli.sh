@@ -7,17 +7,18 @@
 #
 # - relock: a relock of each fixture reproduces its committed lockfile
 #   (conformance-relock).
-# - interactive: `swift` runs and tests on the locked dependencies; with a
-#   stale lockfile it stops and names `swiftpm-purifier lock`;
-#   `swiftpm-purifier uninstall` removes the links; `--lockfile` and
-#   SWIFTPM_PURIFIER_LOCKFILE use a lockfile kept outside the package.
+# - interactive: `swift` runs and (on Linux) tests on the locked
+#   dependencies; with a stale lockfile it stops and names
+#   `swiftpm-purifier lock`; `swiftpm-purifier uninstall` removes the
+#   links; `--lockfile` and SWIFTPM_PURIFIER_LOCKFILE use a lockfile kept
+#   outside the package.
 # - tampered: a lockfile whose hash of an entry was changed, and whose
 #   contentHash was recomputed to match, fails the fetch with a hash
 #   mismatch.
 # - rebuild: `nix build --rebuild` of a fixture gives the same output
 #   (conformance-rebuild).
 # - offline: after `swiftpm-purifier prefetch`, `swift build`, `swift test`
-#   and `swift run` work with no network (conformance-offline). The
+#   (on Linux) and `swift run` work with no network (conformance-offline). The
 #   commands run under `unshare -rn`, or under the command prefix in
 #   SWIFTPM_PURIFIER_TEST_OFFLINE.
 # - update: `swiftpm-purifier update` moves a pin of an old version forward
@@ -103,7 +104,11 @@ interactive() {
     [ -L "Packages/$dependency" ] || fail "Packages/$dependency is not a link"
     case "$(readlink "Packages/$dependency")" in /nix/store/*) ;; *) fail "Packages/$dependency is not in the store" ;; esac
   done
-  "$bin/swift" test > /dev/null || fail "swift test failed"
+  # SwiftPM on macOS runs XCTest tests only through the xctest of Xcode,
+  # which nixpkgs' Swift does not have.
+  if [ "$(uname)" != Darwin ]; then
+    "$bin/swift" test > /dev/null || fail "swift test failed"
+  fi
 
   echo "== a stale lockfile stops swift and names swiftpm-purifier lock"
   cp Package.swift "$work/Package.swift"
@@ -177,7 +182,10 @@ offline() {
   cd "$work/offline"
   "$bin/swiftpm-purifier" prefetch
   "${without_network[@]}" "$bin/swift" build > /dev/null || fail "swift build failed with no network"
-  "${without_network[@]}" "$bin/swift" test > /dev/null || fail "swift test failed with no network"
+  # As in interactive, no XCTest tests on macOS.
+  if [ "$(uname)" != Darwin ]; then
+    "${without_network[@]}" "$bin/swift" test > /dev/null || fail "swift test failed with no network"
+  fi
   [ "$("${without_network[@]}" "$bin/swift" run hello Nix)" = "Hello, Nix!" ] || fail "swift run with no network printed something else"
   cd "$work"
 }

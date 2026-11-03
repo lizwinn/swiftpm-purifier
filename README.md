@@ -137,7 +137,8 @@ It returns:
   under `lib/` with its Swift modules. SwiftPM publishes an automatic
   library, a plugin and a macro as source, so their package is the source
   archive of the package.
-- `tests`, the build with `swift test` run in the sandbox.
+- `tests`, the build with `swift test` run in the sandbox, on Linux only
+  (nixpkgs' Swift has no XCTest runner on macOS).
 - `release`, the source archive of the package, which a package registry
   serves and `swiftpm-purifier publish` uploads.
 - `fetches`, the purifier library entries that the build fetches.
@@ -248,15 +249,16 @@ The lockfile entries follow the entry shapes of
 nix-purifiers share, and that library fetches them. The lock run refuses a
 dependency whose SwiftPM workspace state it cannot derive from
 `Package.resolved`. Binary targets ship prebuilt files for other systems,
-so the build patches their ELF executables and libraries with
+so on Linux the build patches their ELF executables and libraries with
 `autoPatchelfHook` to run under Nix.
 
-x86_64-linux is the only supported system, so the flake's checks and its CI
-run there and not on aarch64-linux. nixpkgs marks its Swift 6.3 compiler
-broken on aarch64-linux, where it fails to link with the gold linker, and
-aarch64-linux joins the flake's systems once nixpkgs updates to Swift 6.4,
-which links with LLD. On macOS, SwiftPM builds against the Xcode toolchain,
-which the Nix sandbox does not have.
+x86_64-linux and aarch64-darwin are the supported systems, so the flake's
+checks run there and not on aarch64-linux; CI runs on x86_64-linux. nixpkgs
+marks its Swift 6.3 compiler broken on aarch64-linux, where it fails to
+link with the gold linker, and aarch64-linux joins the flake's systems once
+nixpkgs updates to Swift 6.4, which links with LLD. On macOS the builds use
+nixpkgs' Swift and Apple SDK rather than Xcode, and `tests` doesn't run
+there: nixpkgs' Swift has no XCTest runner on macOS.
 
 ## Examples
 

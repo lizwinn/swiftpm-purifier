@@ -110,9 +110,6 @@ in
     prints "fixture-hello" "${lib.getExe hello.packages.hello} Nix Swift Nix"
       "Hello, Nix!\nHello, Swift!";
 
-  # The test target of the hello fixture, run in the sandbox.
-  fixture-hello-tests = hello.tests;
-
   fixture-paths = prints "fixture-paths" (lib.getExe paths.packages.paths) "NIX SWIFT";
 
   fixture-macro = prints "fixture-macro" (lib.getExe macro.packages.macro) "6 * 7 = 42";
@@ -121,11 +118,17 @@ in
     prints "fixture-binary" (lib.getExe binary.packages.binary)
       "built with a prebuild command from a binary target";
 
-  # The patched executable of the artifact bundle runs.
+  # The executable of the artifact bundle for this platform runs, patched
+  # on Linux.
   fixture-binary-artifact =
     prints "fixture-binary-artifact"
-      "${binary.tree}/.build/artifacts/binary/SwiftLintBinary/SwiftLintBinary.artifactbundle/linux/${
-        if pkgs'.stdenv.hostPlatform.isAarch64 then "arm64" else "amd64"
+      "${binary.tree}/.build/artifacts/binary/SwiftLintBinary/SwiftLintBinary.artifactbundle/${
+        if pkgs'.stdenv.hostPlatform.isDarwin then
+          "macos"
+        else if pkgs'.stdenv.hostPlatform.isAarch64 then
+          "linux/arm64"
+        else
+          "linux/amd64"
       }/swiftlint version"
       "0.65.1";
 
@@ -265,4 +268,10 @@ in
     assert readsVersion (import ../nix/lib/lock-version.nix);
     assert !(readsVersion 0);
     runCommand "lock-version" { } "touch $out";
+}
+# The test target of the hello fixture, run in the sandbox. SwiftPM on macOS
+# runs XCTest tests only through the xctest of Xcode, which nixpkgs does not
+# have, so they run on Linux.
+// lib.optionalAttrs (!pkgs'.stdenv.hostPlatform.isDarwin) {
+  fixture-hello-tests = hello.tests;
 }

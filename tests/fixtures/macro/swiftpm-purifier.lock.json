@@ -1,8 +1,8 @@
 {
   "binaryTargets": [],
-  "contentHash": "sha256-FVqMMD4NrDanMmbfMHwSHjumwRrCHwm+mXmGSh7IKdA=",
+  "contentHash": "sha256-UzlJD92ytWxFim7H6vGmicEn5Kclajdlc57PanR4PVQ=",
   "localDependencies": [],
-  "manifestHash": "b98f3b52b88b446a234f6448561fc3bee8ac98f5c6aaa4beaf869a8cc1943f7d",
+  "manifestHash": "57a23419e2071bf2af3afe8a9528018702744e26234e8343a8620e7194611c5b",
   "package": "macro",
   "pins": {
     "swift-syntax": {

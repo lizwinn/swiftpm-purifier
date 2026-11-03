@@ -43,6 +43,13 @@ let
         printf 'export %s=%q\n' "$name" "$value"
       done > $out
       printf 'export PATH=%q"''${PATH:+:$PATH}"\n' "$PATH" >> $out
+    ''
+    # On macOS the SDK's setup hook names the SDK in DEVELOPER_DIR and
+    # SDKROOT, where SwiftPM and xcrun look for it.
+    + lib.optionalString swiftPackages.stdenv.hostPlatform.isDarwin ''
+      for name in "''${!DEVELOPER_DIR@}" "''${!SDKROOT@}"; do
+        printf 'export %s=%q\n' "$name" "''${!name}"
+      done >> $out
     '';
   };
 in

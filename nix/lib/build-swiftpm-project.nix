@@ -161,6 +161,18 @@ let
           export CLANG_MODULE_CACHE_PATH=$TMPDIR/clang-module-cache
           ${linkTree}
         ''
+        # The macOS linker writes a debug map into each binary, which names
+        # the object and source files under the build directory, and the
+        # binary's UUID depends on the map. On macOS the build directory's
+        # name differs from build to build, in length too, and the strip
+        # removes the map but keeps the UUID. Linked without the map, which
+        # names files the build deletes, every build gets the same UUID.
+        # The flag goes to clang as -Wl,-S: nixpkgs' clang wrapper takes a
+        # bare -S, as from -Xlinker -S, for a build without a link, and the
+        # binary then loses its /usr/lib/swift rpath.
+        + lib.optionalString stdenv.hostPlatform.isDarwin ''
+          appendToVar swiftpmFlags -Xswiftc -Xclang-linker -Xswiftc -Wl,-S
+        ''
         + (extraArgs.preConfigure or "");
 
         # nixpkgs' install phase installs executables and dynamic libraries;

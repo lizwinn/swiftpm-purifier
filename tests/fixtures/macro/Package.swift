@@ -5,6 +5,10 @@ import PackageDescription
 
 let package = Package(
   name: "macro",
+  // swift-syntax's macro products require macOS 10.15.
+  platforms: [
+    .macOS(.v10_15)
+  ],
   products: [
     .executable(name: "macro", targets: ["macro"])
   ],

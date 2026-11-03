@@ -14,7 +14,12 @@
 # (libxml2.so.2) binaries built on older distributions ask for.
 # `buildInputs` adds libraries beyond these. Files for other platforms in
 # the bundle, such as macOS binaries, are left as they are.
+#
+# On macOS nothing is patched: a bundle's macOS files name the system's
+# libraries by absolute path, under /usr/lib and /System, which every Mac
+# has, and its ELF files are for other platforms.
 {
+  lib,
   stdenv,
   autoPatchelfHook,
   curl,
@@ -34,18 +39,19 @@ stdenv.mkDerivation {
   dontConfigure = true;
   dontBuild = true;
   dontStrip = true;
-  nativeBuildInputs = [ autoPatchelfHook ];
-  buildInputs = [
-    stdenv.cc.cc.lib
-    curl
-    libxml2
-    libxml2_13
-    zlib
-    openssl
-    sqlite
-    icu
-  ]
-  ++ buildInputs;
+  nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [ autoPatchelfHook ];
+  buildInputs =
+    lib.optionals stdenv.hostPlatform.isLinux [
+      stdenv.cc.cc.lib
+      curl
+      libxml2
+      libxml2_13
+      zlib
+      openssl
+      sqlite
+      icu
+    ]
+    ++ buildInputs;
   installPhase = ''
     cp -r --no-preserve=mode $src $out
     find $src -type f -perm -u+x -printf '%P\n' | while read -r file; do
